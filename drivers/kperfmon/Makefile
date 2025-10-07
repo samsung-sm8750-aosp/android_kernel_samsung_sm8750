@@ -32,9 +32,9 @@ $(info kperfmon_DUMMY="olog.pb.h file is missing... again")
 endif
 endif
 
-$(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../../system/core/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
-$(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../../system/logging/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
-$(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../system/core/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
+# $(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../../system/core/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
+# $(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../../system/logging/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
+# $(info kperfmon_DUMMY="$(shell cp -f $(srctree)/../system/core/liblog/include/log/perflog.h  $(srctree)/include/linux/)")
 
 ifneq ($(shell [ -e $(srctree)/drivers/kperfmon/perflog.h ] && echo exist), exist)
 # FLAG=0
