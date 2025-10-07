@@ -36,6 +36,7 @@ static DEFINE_PER_CPU(u64, util_hyst_time);
 static DEFINE_PER_CPU(u64, smart_freq_legacy_reason_hyst_ns);
 
 #define NR_THRESHOLD_PCT		40
+#define NR_THRESHOLD_TRAIL_PCT		80
 #define MAX_RTGB_TIME (sysctl_sched_coloc_busy_hyst_max_ms * NSEC_PER_MSEC)
 
 struct sched_avg_stats stats[WALT_NR_CPUS];
@@ -128,7 +129,7 @@ struct sched_avg_stats *sched_get_nr_running_avg(void)
 		stats[cpu].nr_misfit = (int)div64_u64((tmp_misfit +
 						NR_THRESHOLD_PCT), 100);
 		trailblazer_cpu |= (int)div64_u64((tmp_trailblazer +
-						NR_THRESHOLD_PCT), 100);
+						NR_THRESHOLD_TRAIL_PCT), 100);
 
 		stats[cpu].nr_max = per_cpu(nr_max, cpu);
 		stats[cpu].nr_scaled = tmp_nr;

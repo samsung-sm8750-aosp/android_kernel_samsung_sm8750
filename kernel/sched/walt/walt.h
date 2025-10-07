@@ -278,9 +278,10 @@ struct walt_rq {
 
 	u64			latest_clock;
 	u32			enqueue_counter;
+	u64			lrb_pipeline_start_time; /* lrb = long_running_boost */
+
 	/* UCLAMP tracking */
 	unsigned long		uclamp_limit[UCLAMP_CNT];
-	u64			lrb_pipeline_start_time; /* lrb = long_running_boost */
 };
 
 DECLARE_PER_CPU(struct walt_rq, walt_rq);
@@ -332,6 +333,7 @@ extern u64 walt_sched_clock(void);
 extern void walt_init_tg(struct task_group *tg);
 extern void walt_init_topapp_tg(struct task_group *tg);
 extern void walt_init_foreground_tg(struct task_group *tg);
+extern void walt_init_foregroundboost_tg(struct task_group *tg);
 extern int register_walt_callback(void);
 extern int input_boost_init(void);
 extern int core_ctl_init(void);
@@ -492,6 +494,9 @@ extern unsigned int sysctl_sched_sbt_delay_windows;
 
 extern cpumask_t cpus_for_pipeline;
 extern unsigned int pipeline_swap_util_th;
+extern bool enable_logging;
+extern bool trail_active;
+extern bool sustain_active;
 
 /* WALT cpufreq interface */
 #define WALT_CPUFREQ_ROLLOVER_BIT		BIT(0)
@@ -909,12 +914,30 @@ static inline u64 sched_irqload(int cpu)
 		return 0;
 }
 
+#define SCHED_HIGHIRQ_IGNORE_CPU_FREQ	(1600000)
 extern cpumask_t walt_enforce_high_irq_cpu_mask;
+static inline int sched_ioirq_cpu(int cpu)
+{
+	return cpumask_test_cpu(cpu, &walt_enforce_high_irq_cpu_mask);
+}
+
 static inline int sched_cpu_high_irqload(int cpu)
 {
 	struct walt_rq *wrq = &per_cpu(walt_rq, cpu);
 
-	return wrq->high_irqload || cpumask_test_cpu(cpu, &walt_enforce_high_irq_cpu_mask);
+	/*
+	 * if cpu fmax is lower than 'SCHED_HIGHIRQ_IGNORE_CPU_FREQ'.
+	 * then, ignore highirq CPU masking
+	 *
+	 *  SCHED_HIGHIRQ_IGNORE_CPU_FREQ         capacity_orig_of(cpu)
+	 * -------------------------------- > -----------------------------
+	 *  wrq->cluster->max_possible_freq    arch_scale_cpu_capacity(cpu)
+	 */
+	if ((SCHED_HIGHIRQ_IGNORE_CPU_FREQ * arch_scale_cpu_capacity(cpu))
+		 > (wrq->cluster->max_possible_freq * capacity_orig_of(cpu)))
+		return false;
+
+	return wrq->high_irqload;
 }
 
 static inline u64
@@ -995,6 +1018,9 @@ static bool check_for_higher_capacity(int cpu1, int cpu2)
 
 	if (is_min_possible_cluster_cpu(cpu1) && cpu_partial_halted(cpu2))
 		return false;
+
+	if (is_max_possible_cluster_cpu(cpu1) && is_min_possible_cluster_cpu(cpu2))
+		return capacity_orig_of(cpu1) >= capacity_orig_of(cpu2);
 
 	return capacity_orig_of(cpu1) > capacity_orig_of(cpu2);
 }

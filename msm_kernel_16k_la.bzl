@@ -29,6 +29,7 @@ load(":msm_abl.bzl", "define_abl_dist")
 load(":msm_common.bzl", "define_top_level_config", "gen_config_without_source_lines", "get_out_dir")
 load(":msm_dtc.bzl", "define_dtc_dist")
 load(":target_variants.bzl", "la_variants")
+load(":lego.bzl", "lego_dtbo_list")
 
 def _define_build_config(
         msm_target,
@@ -107,6 +108,8 @@ EOF
         ] + [fragment for fragment in build_config_fragments] + [
             "build.config.msm.common",
             "build.config.msm.perf",
+            "build.config.msm.perf.sec",
+            "build.config.lego",
         ],
     )
 
@@ -468,6 +471,8 @@ def define_msm_16k_la(
     vendor_ramdisk_binaries = get_16K_vendor_ramdisk_binaries(target)
     gki_ramdisk_prebuilt_binary = get_gki_ramdisk_prebuilt_binary()
     build_config_fragments = get_build_config_fragments(msm_target)
+
+    dtbo_list = dtbo_list + lego_dtbo_list
 
     _define_build_config(
         msm_target,

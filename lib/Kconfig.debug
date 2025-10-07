@@ -440,6 +440,7 @@ config FORCE_FRAME_WARN_TO_2K
 config FRAME_WARN
 	int "Warn for stack frames larger than"
 	range 0 8192
+	default 0 if KUNIT
 	default 0 if KMSAN
 	default 2048 if FORCE_FRAME_WARN_TO_2K
 	default 2048 if GCC_PLUGIN_LATENT_ENTROPY

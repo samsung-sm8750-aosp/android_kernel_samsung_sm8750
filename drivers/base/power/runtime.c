@@ -11,6 +11,7 @@
 #include <linux/export.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeirq.h>
+#include <linux/of.h>
 #include <trace/events/rpm.h>
 
 #include "../base.h"
@@ -470,6 +471,8 @@ static int rpm_idle(struct device *dev, int rpmflags)
 	int retval;
 
 	trace_rpm_idle(dev, rpmflags);
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name: %s, flags: %d, usage_count: %d, disable_depth: %d, runtime_auto: %d, request_pending: %d, irq_safe: %d, child_count: %d \n", __func__, dev_name(dev), rpmflags, atomic_read(&dev->power.usage_count), dev->power.disable_depth, dev->power.runtime_auto, dev->power.request_pending, dev->power.irq_safe, atomic_read(&dev->power.child_count));	
 	retval = rpm_check_suspend_allowed(dev);
 	if (retval < 0)
 		;	/* Conditions are wrong. */
@@ -564,6 +567,8 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 	int retval;
 
 	trace_rpm_suspend(dev, rpmflags);
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name: %s, flags: %d, usage_count: %d, disable_depth: %d, runtime_auto: %d, request_pending: %d, irq_safe: %d, child_count: %d \n", __func__, dev_name(dev), rpmflags, atomic_read(&dev->power.usage_count), dev->power.disable_depth, dev->power.runtime_auto, dev->power.request_pending, dev->power.irq_safe, atomic_read(&dev->power.child_count));
 
  repeat:
 	retval = rpm_check_suspend_allowed(dev);
@@ -715,7 +720,9 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 
  out:
 	trace_rpm_return_int(dev, _THIS_IP_, retval);
-
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name:%s, retval: %d \n", __func__, dev_name(dev), retval);
+		
 	return retval;
 
  fail:
@@ -767,6 +774,8 @@ static int rpm_resume(struct device *dev, int rpmflags)
 	int retval = 0;
 
 	trace_rpm_resume(dev, rpmflags);
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name: %s, flags: %d, usage_count: %d, disable_depth: %d, runtime_auto: %d, request_pending: %d, irq_safe: %d, child_count: %d \n", __func__, dev_name(dev), rpmflags, atomic_read(&dev->power.usage_count), dev->power.disable_depth, dev->power.runtime_auto, dev->power.request_pending, dev->power.irq_safe, atomic_read(&dev->power.child_count));
 
  repeat:
 	if (dev->power.runtime_error) {
@@ -937,6 +946,8 @@ static int rpm_resume(struct device *dev, int rpmflags)
 	}
 
 	trace_rpm_return_int(dev, _THIS_IP_, retval);
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name:%s, retval: %d \n", __func__, dev_name(dev), retval);
 
 	return retval;
 }
@@ -1065,10 +1076,15 @@ static int rpm_drop_usage_count(struct device *dev)
 	 * made above.
 	 */
 	atomic_inc(&dev->power.usage_count);
-	dev_warn(dev, "Runtime PM usage count underflow!\n");
+	dev_err(dev, "Runtime PM usage count underflow!\n");
 	return -EINVAL;
 }
 
+static inline void trace_rpm_usage_custom(struct device *dev, int rpmflags)
+{
+	if (of_device_is_compatible(dev->of_node, "qcom,adreno-smmu"))
+		pr_info("%s: name: %s, flags: %d, usage_count: %d, disable_depth: %d, runtime_auto: %d, request_pending: %d, irq_safe: %d, child_count: %d \n", __func__, dev_name(dev), rpmflags, atomic_read(&dev->power.usage_count), dev->power.disable_depth, dev->power.runtime_auto, dev->power.request_pending, dev->power.irq_safe, atomic_read(&dev->power.child_count));
+}
 /**
  * __pm_runtime_idle - Entry point for runtime idle operations.
  * @dev: Device to send idle notification for.
@@ -1092,7 +1108,7 @@ int __pm_runtime_idle(struct device *dev, int rpmflags)
 		if (retval < 0) {
 			return retval;
 		} else if (retval > 0) {
-			trace_rpm_usage(dev, rpmflags);
+			trace_rpm_usage_custom(dev, rpmflags);
 			return 0;
 		}
 	}
@@ -1130,7 +1146,7 @@ int __pm_runtime_suspend(struct device *dev, int rpmflags)
 		if (retval < 0) {
 			return retval;
 		} else if (retval > 0) {
-			trace_rpm_usage(dev, rpmflags);
+			trace_rpm_usage_custom(dev, rpmflags);
 			return 0;
 		}
 	}
@@ -1213,7 +1229,7 @@ int pm_runtime_get_if_active(struct device *dev, bool ign_usage_count)
 	} else {
 		retval = atomic_inc_not_zero(&dev->power.usage_count);
 	}
-	trace_rpm_usage(dev, 0);
+	trace_rpm_usage_custom(dev, 0);
 	spin_unlock_irqrestore(&dev->power.lock, flags);
 
 	return retval;
@@ -1577,7 +1593,7 @@ void pm_runtime_allow(struct device *dev)
 	if (ret == 0)
 		rpm_idle(dev, RPM_AUTO | RPM_ASYNC);
 	else if (ret > 0)
-		trace_rpm_usage(dev, RPM_AUTO | RPM_ASYNC);
+		trace_rpm_usage_custom(dev, RPM_AUTO | RPM_ASYNC);
 
  out:
 	spin_unlock_irq(&dev->power.lock);
@@ -1647,7 +1663,7 @@ static void update_autosuspend(struct device *dev, int old_delay, int old_use)
 			atomic_inc(&dev->power.usage_count);
 			rpm_resume(dev, 0);
 		} else {
-			trace_rpm_usage(dev, 0);
+			trace_rpm_usage_custom(dev, 0);
 		}
 	}
 

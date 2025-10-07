@@ -758,18 +758,23 @@ static int usb_gadget_disconnect_locked(struct usb_gadget *gadget)
 	int ret = 0;
 
 	if (!gadget->ops->pullup) {
+		pr_err("%s: gadget pullup operation not supported\n", __func__);
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
 
-	if (!gadget->connected)
+	if (!gadget->connected) {
+		pr_err("%s: gadget not connected\n", __func__);
 		goto out;
+	}
 
 	if (gadget->deactivated || !gadget->udc->started) {
 		/*
 		 * If gadget is deactivated we only save new state.
 		 * Gadget will stay disconnected after activation.
 		 */
+		pr_err("%s: gadget->deactivated(%d) gadget->udc->started(%d)\n",
+	       __func__, gadget->deactivated, gadget->udc->started);
 		gadget->connected = false;
 		goto out;
 	}
@@ -1642,7 +1647,7 @@ static void gadget_unbind_driver(struct device *dev)
 	struct usb_udc *udc = gadget->udc;
 	struct usb_gadget_driver *driver = udc->driver;
 
-	dev_dbg(&udc->dev, "unbinding gadget driver [%s]\n", driver->function);
+	dev_info(&udc->dev, "unbinding gadget driver [%s]\n", driver->function);
 
 	udc->allow_connect = false;
 	cancel_work_sync(&udc->vbus_work);

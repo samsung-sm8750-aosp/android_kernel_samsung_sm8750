@@ -14,6 +14,9 @@
 #include <linux/of.h>
 #include <linux/soc/qcom/qmi.h>
 #include <linux/net.h>
+#if IS_ENABLED(CONFIG_SEC_PM_LOG)
+#include <linux/sec_pm_log.h>
+#endif
 
 #include "thermal_mitigation_device_service_v01.h"
 
@@ -196,7 +199,10 @@ static int qmi_tmd_send_state_request(struct qmi_cooling_device *qmi_cdev,
 		goto qmi_send_exit;
 	}
 	ret = 0;
-	pr_debug("Requested qmi state:%d for %s\n", state, qmi_cdev->cdev_name);
+	pr_info("Requested qmi state:%d for %s\n", state, qmi_cdev->cdev_name);
+#if IS_ENABLED(CONFIG_SEC_PM_LOG)
+	ss_thermal_print("qmi: %s, %d\n", qmi_cdev->cdev_name, state);
+#endif
 
 qmi_send_exit:
 	mutex_unlock(&tmd->mutex);

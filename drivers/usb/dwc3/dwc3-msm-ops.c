@@ -21,6 +21,12 @@
 /* USB2 phy configuration quirk control bit */
 #define USB2PHYCFG_SUSPHY	BIT(0)
 #define USB2PHYCFG_ENBLSLPM	BIT(1)
+#if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
+#include <linux/usb_notify.h>
+#endif
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+#include <linux/usb/f_ss_mon_gadget.h>
+#endif
 
 union kprobe_data {
 	struct {
@@ -38,13 +44,15 @@ static int entry_dwc3_suspend_common(struct kretprobe_instance *ri,
 	union kprobe_data *data = (union kprobe_data *)ri->data;
 
 	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST) {
-		/* Storing the original values. */
+		/*
+		 * Storing the original values.
+		 */
 		if (dwc->dis_u2_susphy_quirk)
-			flag |= USB2PHYCFG_SUSPHY;
+			flag |= BIT(0);
 		if (dwc->dis_enblslpm_quirk)
-			flag |= USB2PHYCFG_ENBLSLPM;
+			flag |= BIT(1);
 
-		dev_dbg(dwc->dev, "saved SUSPHY=%u & ENABLSLPM=%u\n",
+		dev_info(dwc->dev, "saved SUSPHY=%u & ENABLSLPM=%u\n",
 			dwc->dis_u2_susphy_quirk, dwc->dis_enblslpm_quirk);
 		dwc->dis_u2_susphy_quirk = false;
 		dwc->dis_enblslpm_quirk = false;
@@ -52,7 +60,7 @@ static int entry_dwc3_suspend_common(struct kretprobe_instance *ri,
 
 	data->dwc = dwc;
 	data->xi0 = flag;
-	dev_dbg(dwc->dev, "dwc3 suspend common entry\n");
+	dev_info(dwc->dev, "dwc3 suspend common entry\n");
 	return 0;
 }
 
@@ -64,18 +72,20 @@ static int exit_dwc3_suspend_common(struct kretprobe_instance *ri,
 	int flag = data->xi0;
 
 	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST) {
-		/* Re-store the original quic values. */
-		if (flag & USB2PHYCFG_SUSPHY)
+		/*
+		 * Re-store the original quic values.
+		 */
+		if (flag & BIT(0))
 			dwc->dis_u2_susphy_quirk = true;
-		if (flag & USB2PHYCFG_ENBLSLPM)
+		if (flag & BIT(1))
 			dwc->dis_enblslpm_quirk = true;
 
-		dev_dbg(dwc->dev, "restored SUSPHY=%u & ENABLSLPM=%u\n",
+		dev_info(dwc->dev, "restored SUSPHY=%u & ENABLSLPM=%u\n",
 			dwc->dis_u2_susphy_quirk, dwc->dis_enblslpm_quirk);
 
 	}
 
-	dev_dbg(dwc->dev, "dwc3 suspend common exit\n");
+	dev_info(dwc->dev, "dwc3 suspend common exit\n");
 	return 0;
 }
 
@@ -116,8 +126,16 @@ static int exit_usb_ep_set_maxpacket_limit(struct kretprobe_instance *ri,
 static int entry_dwc3_gadget_run_stop(struct kretprobe_instance *ri,
 				   struct pt_regs *regs)
 {
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+	union kprobe_data *data = (union kprobe_data *)ri->data;
+#endif
 	struct dwc3 *dwc = (struct dwc3 *)regs->regs[0];
 	int is_on = (int)regs->regs[1];
+
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+	data->dwc = dwc;
+	data->xi0 = is_on;
+#endif
 
 	if (is_on) {
 		/*
@@ -151,6 +169,27 @@ static int entry_dwc3_gadget_run_stop(struct kretprobe_instance *ri,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+static int exit_dwc3_gadget_run_stop(struct kretprobe_instance *ri,
+				   struct pt_regs *regs)
+{
+	unsigned long long retval = regs_return_value(regs);
+	union kprobe_data *data = (union kprobe_data *)ri->data;
+	struct dwc3 *dwc = data->dwc;
+	int is_on;
+
+	is_on = data->xi0;
+
+	vbus_session_notify(dwc->gadget, is_on, retval);
+
+	if (retval) {
+		pr_info("usb: dwc3_gadget_run_stop : dwc3_gadget %s failed (%d)\n",
+			is_on ? "ON" : "OFF", (int)retval);
+	}
+	return 0;
+}
+#endif
+
 static int entry_dwc3_send_gadget_ep_cmd(struct kretprobe_instance *ri,
 				   struct pt_regs *regs)
 {
@@ -173,8 +212,29 @@ static int entry___dwc3_gadget_ep_enable(struct kretprobe_instance *ri,
 	unsigned int action = (unsigned int)regs->regs[1];
 
 	/* DWC3_DEPCFG_ACTION_MODIFY is only done during CONNDONE */
-	if (action == DWC3_DEPCFG_ACTION_MODIFY && dep->number == 1)
+	if (action == DWC3_DEPCFG_ACTION_MODIFY && dep->number == 1) {
 		dwc3_msm_notify_event(dep->dwc, DWC3_CONTROLLER_CONNDONE_EVENT, 0);
+#if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
+		switch (dep->dwc->speed) {
+		case DWC3_DSTS_SUPERSPEED_PLUS:
+			store_usblog_notify(NOTIFY_USBSTATE,
+				(void *)"USB_STATE=ENUM:CONNDONE:PSS", NULL);
+			break;
+		case DWC3_DSTS_SUPERSPEED:
+			store_usblog_notify(NOTIFY_USBSTATE,
+				(void *)"USB_STATE=ENUM:CONNDONE:SS", NULL);
+			break;
+		case DWC3_DSTS_HIGHSPEED:
+			store_usblog_notify(NOTIFY_USBSTATE,
+				(void *)"USB_STATE=ENUM:CONNDONE:HS", NULL);
+			break;
+		case DWC3_DSTS_FULLSPEED:
+			store_usblog_notify(NOTIFY_USBSTATE,
+				(void *)"USB_STATE=ENUM:CONNDONE:FS", NULL);
+			break;
+		}
+#endif
+	}
 
 	return 0;
 }
@@ -186,6 +246,9 @@ static int entry_dwc3_gadget_reset_interrupt(struct kretprobe_instance *ri,
 
 	dwc3_core_stop_hw_active_transfers(dwc);
 	dwc3_msm_notify_event(dwc, DWC3_CONTROLLER_NOTIFY_CLEAR_DB, 0);
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+	usb_reset_notify(dwc->gadget);
+#endif
 	return 0;
 }
 
@@ -311,6 +374,59 @@ static int entry_uas_slave_configure(struct kretprobe_instance *ri,
 	return 0;
 }
 
+static int entry_dwc3_gadget_vbus_draw(struct kretprobe_instance *ri,
+				   struct pt_regs *regs)
+{
+
+	unsigned int mA = (unsigned int)regs->regs[1];
+
+	switch (mA) {
+	case 2:
+		pr_info("[USB] dwc3_gadget_vbus_draw: suspend -log only-\n");
+		break;
+	case 100:
+		break;
+	case 500:
+		break;
+	case 900:
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+static int entry_configfs_composite_setup(struct kretprobe_instance *ri,
+				   struct pt_regs *regs)
+{
+	struct usb_gadget *gadget = (struct usb_gadget *)regs->regs[0];
+	const struct usb_ctrlrequest *ctrl = (const struct usb_ctrlrequest *)regs->regs[1];
+	struct usb_composite_dev *cdev;
+	struct usb_function		*f = NULL;
+	struct usb_configuration *c = NULL;
+
+	cdev = get_gadget_data(gadget);
+	if (!cdev) {
+		pr_info("[USB] cdev is NULL\n");
+		return 0;
+	}
+
+	if (cdev->config) {
+		list_for_each_entry(f, &cdev->config->functions, list)
+			if (!strcmp(f->name, "ss_mon"))
+				if (f->req_match && !f->req_match(f, ctrl, true))
+					f->setup(f, ctrl);
+	} else {
+		list_for_each_entry(c, &cdev->configs, list)
+			list_for_each_entry(f, &c->functions, list)
+				if (!strcmp(f->name, "ss_mon"))
+					if (f->req_match && !f->req_match(f, ctrl, true))
+						f->setup(f, ctrl);
+	}
+
+	return 0;
+}
+
 #define ENTRY_EXIT(name) {\
 	.handler = exit_##name,\
 	.entry_handler = entry_##name,\
@@ -327,7 +443,11 @@ static int entry_uas_slave_configure(struct kretprobe_instance *ri,
 }
 
 static struct kretprobe dwc3_msm_probes[] = {
+#if IS_ENABLED(CONFIG_USB_CONFIGFS_F_SS_MON_GADGET)
+	ENTRY_EXIT(dwc3_gadget_run_stop),
+#else
 	ENTRY(dwc3_gadget_run_stop),
+#endif
 	ENTRY(dwc3_send_gadget_ep_cmd),
 	ENTRY(dwc3_gadget_reset_interrupt),
 	ENTRY(__dwc3_gadget_ep_enable),
@@ -341,6 +461,8 @@ static struct kretprobe dwc3_msm_probes[] = {
 	ENTRY(trace_event_raw_event_dwc3_log_event),
 	ENTRY(trace_event_raw_event_dwc3_log_ep),
 	ENTRY(uas_slave_configure),
+	ENTRY(dwc3_gadget_vbus_draw),
+	ENTRY(configfs_composite_setup),
 };
 
 

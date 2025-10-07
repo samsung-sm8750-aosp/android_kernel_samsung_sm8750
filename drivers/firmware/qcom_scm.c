@@ -2790,7 +2790,7 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	__qcom_multi_smc_init(scm, pdev);
 
 	scm->restart_nb.notifier_call = qcom_scm_do_restart;
-	scm->restart_nb.priority = 130;
+	scm->restart_nb.priority = 131;
 	register_restart_handler(&scm->restart_nb);
 
 	if (scm->dload_mode_addr &&

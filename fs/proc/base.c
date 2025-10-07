@@ -1266,6 +1266,52 @@ static const struct file_operations proc_oom_adj_operations = {
 	.llseek		= generic_file_llseek,
 };
 
+static ssize_t key_thread_read(struct file *file, char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	struct task_struct *task = get_proc_task(file_inode(file));
+	char buffer[PROC_NUMBUF];
+	unsigned int key_thread = 0;
+	size_t len;
+
+	if (!task)
+		return -ESRCH;
+	key_thread = task->android_vendor_data2;
+	put_task_struct(task);
+	len = snprintf(buffer, sizeof(buffer), "%u\n", key_thread);
+	return simple_read_from_buffer(buf, count, ppos, buffer, len);
+}
+
+static ssize_t key_thread_write(struct file *file, const char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	unsigned int key_thread;
+	int err = 0;
+	struct task_struct *task;
+	printk(KERN_ERR "BUG:svprt key_thread_write");
+
+	err = kstrtouint_from_user(buf, count, 0, &key_thread);
+	if (err)
+		goto out;
+
+	task = get_proc_task(file_inode(file));
+	if (!task){
+		err = -ESRCH;
+		goto out;
+	}
+	task->android_vendor_data2 = key_thread;
+	printk(KERN_ERR "BUG:svprt write=%u\n", key_thread);
+	put_task_struct(task);
+out:
+	return err < 0 ? err : count;
+}
+
+static const struct file_operations proc_key_thread_operations = {
+	.read		= key_thread_read,
+	.write		= key_thread_write,
+	.llseek		= generic_file_llseek,
+};
+
 static ssize_t oom_score_adj_read(struct file *file, char __user *buf,
 					size_t count, loff_t *ppos)
 {
@@ -3734,6 +3780,7 @@ static const struct pid_entry tid_base_stuff[] = {
 	ONE("oom_score", S_IRUGO, proc_oom_score),
 	REG("oom_adj",   S_IRUGO|S_IWUSR, proc_oom_adj_operations),
 	REG("oom_score_adj", S_IRUGO|S_IWUSR, proc_oom_score_adj_operations),
+	REG("key_thread",    S_IRUGO|S_IWUSR|S_IROTH|S_IWOTH, proc_key_thread_operations),
 #ifdef CONFIG_AUDIT
 	REG("loginuid",  S_IWUSR|S_IRUGO, proc_loginuid_operations),
 	REG("sessionid",  S_IRUGO, proc_sessionid_operations),

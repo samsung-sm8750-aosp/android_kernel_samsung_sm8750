@@ -1861,7 +1861,7 @@ static int clk_rcg2_crm_err_dump(struct clk_hw *hw)
 	ret = crm_dump_regs(crm->name);
 	if (ret)
 		pr_err("%s %s failed ret=%d\n", __func__, qcom_clk_hw_get_name(hw), ret);
-
+	BUG_ON(1);
 	return ret;
 }
 

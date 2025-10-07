@@ -757,6 +757,15 @@ config REGULATOR_MAX77802
 	  Exynos5420/Exynos5800 SoCs to control various voltages.
 	  It includes support for control of voltage and ramp speed.
 
+config REGULATOR_MAX77816
+	tristate "Maxim MAX77816 High Efficiency Buck-Boost Converter"
+	depends on I2C
+	help
+	  This driver controls Maxim MAX77816 High Efficiency Buck-Boost
+	  Converter via I2C bus. The converter delivers the output which is
+	  equal to the input voltage divided by 2. Say Y here to
+	  enable the regulator driver for the converter.
+
 config REGULATOR_MAX77826
 	tristate "Maxim 77826 regulator"
 	depends on I2C
@@ -1769,3 +1778,12 @@ config REGULATOR_QTI_OCP_NOTIFIER
 	  system.
 
 endif
+
+config REGULATOR_TPS62864
+	tristate "TI TPS62864 Power Regulator"
+	depends on I2C && OF
+	select REGMAP_I2C
+	help
+	  This driver supports TPS62364 voltage regulator chips. These are
+	  high-frequency synchronous step-down converters with an I2C
+	  interface.

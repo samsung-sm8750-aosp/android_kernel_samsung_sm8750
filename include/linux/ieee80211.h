@@ -2685,11 +2685,11 @@ static inline bool ieee80211_he_capa_size_ok(const u8 *data, u8 len)
 #define IEEE80211_HE_OPERATION_PARTIAL_BSS_COLOR		0x40000000
 #define IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED		0x80000000
 
-#define IEEE80211_6GHZ_CTRL_REG_LPI_AP		0
-#define IEEE80211_6GHZ_CTRL_REG_SP_AP		1
-#define IEEE80211_6GHZ_CTRL_REG_VLP_AP		2
-#define IEEE80211_6GHZ_CTRL_REG_INDOOR_LPI_AP	3
-#define IEEE80211_6GHZ_CTRL_REG_INDOOR_SP_AP	4
+#define IEEE80211_6GHZ_CTRL_REG_LPI_AP	0
+#define IEEE80211_6GHZ_CTRL_REG_SP_AP	1
+#define IEEE80211_6GHZ_CTRL_REG_VLP_AP	2
+#define IEEE80211_6GHZ_CTRL_REG_INDOOR_LPI_AP 3
+#define IEEE80211_6GHZ_CTRL_REG_INDOOR_SP_AP 4
 
 /**
  * struct ieee80211_he_6ghz_oper - HE 6 GHz operation Information field
@@ -2723,8 +2723,8 @@ struct ieee80211_he_6ghz_oper {
  */
 #define IEEE80211_TPE_MAX_IE_COUNT	8
 /*
- * In "Table 9-277‚ÄîMeaning of Maximum Transmit Power Count subfield"
- * of "IEEE Std 802.11ax‚Ñ¢‚Äê2021", the max power level is 8.
+ * In "Table 9-277îMeaning of Maximum Transmit Power Count subfield"
+ * of "IEEE Std 802.11ax¢‚Ä021", the max power level is 8.
  */
 #define IEEE80211_MAX_NUM_PWR_LEVEL	8
 

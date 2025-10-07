@@ -22,7 +22,9 @@
 #include <linux/spinlock.h>
 
 #include <linux/ipc_logging.h>
-
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+#include <linux/adsp/adsp_ft_common.h>
+#endif
 /*
  * The Shared Memory Point to Point (SMP2P) protocol facilitates communication
  * of a single 32-bit value between two processors.  Each value has a single
@@ -50,6 +52,11 @@
 #define SMP2P_MAGIC 0x504d5324
 #define SMP2P_ALL_FEATURES	SMP2P_FEATURE_SSR_ACK
 
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+#define SMP2P_WAKELOCK_DURATION_MAX	100000	//100s
+
+struct workqueue_struct *sns_event_check_wq;
+#endif
 /**
  * struct smp2p_smem_item - in memory communication structure
  * @magic:		magic number
@@ -165,10 +172,14 @@ struct qcom_smp2p {
 
 	struct list_head inbound;
 	struct list_head outbound;
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+	struct work_struct sns_event_check_work;
+	u32 val;
+#endif
 };
 
 static void *ilc;
-#define SMP2P_LOG_PAGE_CNT 2
+#define SMP2P_LOG_PAGE_CNT 30
 #define SMP2P_INFO(x, ...)	\
 	ipc_log_string(ilc, "[%s]: "x, __func__, ##__VA_ARGS__)
 
@@ -231,6 +242,73 @@ static void qcom_smp2p_negotiate(struct qcom_smp2p *smp2p)
 	}
 }
 
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+static bool qcom_smp2p_wakelock_check(struct qcom_smp2p *smp2p, struct wakeup_source *ws)
+{
+	if (ws->active) {
+		ktime_t duration = ktime_sub(ktime_get(), ws->last_time);
+		u64 duration_ms = ktime_to_ns(duration) / 1000000;
+		
+		if (duration_ms > SMP2P_WAKELOCK_DURATION_MAX) {
+			dev_info(smp2p->dev, "duration:%llu\n", duration_ms);
+			dev_info(smp2p->dev, "ac:%lu, ec:%lu, wc:%lu, ex:%lu\n", 
+				ws->active_count, ws->event_count,
+				ws->wakeup_count, ws->expire_count);
+			return true;
+		}
+	}
+	return false;
+}
+
+static void qcom_smp2p_sns_event_check(struct work_struct *work)
+{
+	struct qcom_smp2p *smp2p = container_of((struct work_struct *)work,
+		struct qcom_smp2p, sns_event_check_work);
+	struct wakeup_source *ws;
+	struct sns_smp2p_values smp2p_values;
+	u32 val = smp2p->val;
+	bool is_log_enable = false;
+
+	smp2p_values.val = val;
+	smp2p_values.sns_reserved_id = ((val >> 24) & 0xff);
+	smp2p_values.msg_id = ((val >> 12) & 0xFFF);
+	smp2p_values.connect_id = ((val >> 4) & 0xFF);
+	smp2p_values.is_fac = ((val >> 3) & 0x1);
+	smp2p_values.is_sns_reserved_id = ((val >> 2) & 0x1);
+	smp2p_values.is_awaking_event = ((val >> 1) & 0x1);
+
+	if (smp2p_values.is_awaking_event) {
+		is_log_enable = true;
+	} else {
+		for_each_wakeup_source(ws) {
+			if (!ws->dev)
+				continue;
+			if (!strncmp(ws->name, "smp2p-sleepstate", 16)) {
+				is_log_enable = qcom_smp2p_wakelock_check(smp2p, ws);
+				break;
+			}
+		}
+	}
+
+	sns_save_smp2p_info(&smp2p_values);
+	if (is_log_enable) {
+		if (smp2p_values.is_sns_reserved_id) {
+			dev_info(smp2p->dev, "%d, val:%0x\n", smp2p->remote_pid, val);
+			dev_info(smp2p->dev, "id:%d, msg:%d, c:%d, fac:%d, res:%d, awake:%d\n",
+				smp2p_values.sns_reserved_id, smp2p_values.msg_id,
+				smp2p_values.connect_id, (int)smp2p_values.is_fac,
+				(int)smp2p_values.is_sns_reserved_id,
+				(int)smp2p_values.is_awaking_event);
+		} else {
+			u32 suid = (val & 0xFFF8);
+			dev_info(smp2p->dev, "suid:0x%x, res:%d, awake:%d\n",
+				suid, smp2p_values.is_sns_reserved_id,
+				(int)smp2p_values.is_awaking_event);
+		}
+	} 
+}
+#endif
+
 static void qcom_smp2p_notify_in(struct qcom_smp2p *smp2p)
 {
 	struct smp2p_smem_item *in;
@@ -247,6 +325,10 @@ static void qcom_smp2p_notify_in(struct qcom_smp2p *smp2p)
 	for (i = smp2p->valid_entries; i < in->valid_entries; i++) {
 		list_for_each_entry(entry, &smp2p->inbound, node) {
 			memcpy(buf, in->entries[i].name, sizeof(buf));
+
+			if(entry != NULL)
+				SMP2P_INFO("%s:\t%s: skipping not ready\n", buf, entry->name);
+
 			if (!strcmp(buf, entry->name)) {
 				entry->value = &in->entries[i].value;
 				break;
@@ -261,6 +343,8 @@ static void qcom_smp2p_notify_in(struct qcom_smp2p *smp2p)
 	/* Fire interrupts based on any value changes */
 	list_for_each_entry(entry, &smp2p->inbound, node) {
 		/* Ignore entries not yet allocated by the remote side */
+		if(entry != NULL && smp2p != NULL && entry->value != NULL)
+			SMP2P_INFO("%d:\t%s: before if  %d\n",smp2p->remote_pid, entry->name, *entry->value);
 		if (!entry->value) {
 			SMP2P_INFO("%d:\t%s: skipping not ready\n",
 				   smp2p->remote_pid, entry->name);
@@ -278,7 +362,16 @@ static void qcom_smp2p_notify_in(struct qcom_smp2p *smp2p)
 
 		SMP2P_INFO("%d:\t%s: status:%0lx val:%0x\n",
 			   smp2p->remote_pid, entry->name, status, val);
-
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+		if (!strncmp(entry->name, "sleepstate_see", 14)) {
+			if (sns_event_check_wq) {
+				smp2p->val = val;
+				queue_work(sns_event_check_wq, &smp2p->sns_event_check_work);
+			} else {
+				dev_err(smp2p->dev, "WQ Null due to No memory\n");
+			}
+		}
+#endif
 		/* No changes of this entry? */
 		if (!status)
 			continue;
@@ -431,6 +524,8 @@ static int qcom_smp2p_inbound_entry(struct qcom_smp2p *smp2p,
 		dev_err(smp2p->dev, "failed to add irq_domain\n");
 		return -ENOMEM;
 	}
+	if (entry != NULL && entry->smp2p != NULL)
+		SMP2P_INFO("inbound entry added for irq %d\n", entry->smp2p->irq);
 
 	return 0;
 }
@@ -480,8 +575,12 @@ static int qcom_smp2p_outbound_entry(struct qcom_smp2p *smp2p,
 	entry->state = qcom_smem_state_register(node, &smp2p_state_ops, entry);
 	if (IS_ERR(entry->state)) {
 		dev_err(smp2p->dev, "failed to register qcom_smem_state\n");
+		if(entry != NULL && entry->smp2p != NULL)
+			SMP2P_INFO("outbound entry add failed for irq %d while smem register\n", entry->smp2p->irq);
 		return PTR_ERR(entry->state);
 	}
+	if(entry != NULL && entry->smp2p != NULL)
+		SMP2P_INFO("outbound entry added for irq %d\n", entry->smp2p->irq);
 
 	return 0;
 }
@@ -692,6 +791,14 @@ static int qcom_smp2p_probe(struct platform_device *pdev)
 	if (ret)
 		goto set_wake_irq_fail;
 
+#if IS_ENABLED(CONFIG_SSC_SMP2P_EVENT_DEBUG)
+	sns_event_check_wq = create_singlethread_workqueue("sns_event_check_wq");
+	if (sns_event_check_wq == NULL) {
+		dev_err(&pdev->dev, "could not create wq\n");
+	}
+	if (sns_event_check_wq)
+		INIT_WORK(&smp2p->sns_event_check_work, qcom_smp2p_sns_event_check);
+#endif
 	return 0;
 
 set_wake_irq_fail:

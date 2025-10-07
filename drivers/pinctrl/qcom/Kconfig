@@ -134,4 +134,16 @@ config PINCTRL_SM8550_LPASS_LPI
 	  (Low Power Island) found on the Qualcomm Technologies Inc SM8550
 	  platform.
 
+config SEC_GPIO_DVS
+	tristate "setting Samsung GPIO debugging and verification system"
+	help
+	  To verify gpio configurations of devices, set this feature.
+	  This feature should be enabled for user-debug mode.
+
+config SEC_GPIO_DUMP
+	bool "Help to check GPIO configuration"
+	help
+	  To debug gpio state, set this feature.
+	  This feature can be enabled for all modes.
+
 endif

@@ -73,7 +73,7 @@ enum {
 #define ADVANCED_RPMB_REQ_TIMEOUT  3000 /* 3 seconds */
 
 /* Task management command timeout */
-#define TM_CMD_TIMEOUT	100 /* msecs */
+#define TM_CMD_TIMEOUT	300 /* msecs */
 
 /* maximum number of retries for a general UIC command  */
 #define UFS_UIC_COMMAND_RETRIES 3
@@ -107,6 +107,9 @@ enum {
 
 /* bMaxNumOfRTT is equal to two after device manufacturing */
 #define DEFAULT_MAX_NUM_RTT 2
+
+/* Minimum elapsed time to print scaling log */
+#define UFS_SEC_LOG_MIN_SCALING_ELAPSED_TIME 5000 /* microsecs */
 
 /* UFSHC 4.0 compliant HC support this mode. */
 static bool use_mcq_mode = true;
@@ -1420,6 +1423,7 @@ static int ufshcd_devfreq_target(struct device *dev,
 	struct list_head *clk_list = &hba->clk_list_head;
 	struct ufs_clk_info *clki;
 	unsigned long irq_flags;
+	s64 elapsed;
 
 	if (!ufshcd_is_clkscaling_supported(hba))
 		return -EINVAL;
@@ -1463,9 +1467,14 @@ static int ufshcd_devfreq_target(struct device *dev,
 	start = ktime_get();
 	ret = ufshcd_devfreq_scale(hba, scale_up);
 
+	elapsed = ktime_to_us(ktime_sub(ktime_get(), start));
 	trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
 		(scale_up ? "up" : "down"),
 		ktime_to_us(ktime_sub(ktime_get(), start)), ret);
+	if (elapsed > UFS_SEC_LOG_MIN_SCALING_ELAPSED_TIME)
+		dev_err(hba->dev, "scale %s: took %lld us, err %d.\n",
+				scale_up ? "up" : "down",
+				elapsed, ret);
 
 out:
 	if (sched_clk_scaling_suspend_work &&
@@ -1625,6 +1634,8 @@ static ssize_t ufshcd_clkscale_enable_store(struct device *dev,
 	struct ufs_hba *hba = dev_get_drvdata(dev);
 	u32 value;
 	int err = 0;
+	ktime_t start;
+	s64 elapsed;
 
 	if (kstrtou32(buf, 0, &value))
 		return -EINVAL;
@@ -1646,12 +1657,29 @@ static ssize_t ufshcd_clkscale_enable_store(struct device *dev,
 
 	if (value) {
 		ufshcd_resume_clkscaling(hba);
+		dev_err(hba->dev, "scale enable requested %s(p/t: %u/%u)\n",
+				current->comm,
+				(unsigned int)current->pid,
+				(unsigned int)current->tgid);
 	} else {
 		ufshcd_suspend_clkscaling(hba);
+		start = ktime_get();
 		err = ufshcd_devfreq_scale(hba, true);
 		if (err)
 			dev_err(hba->dev, "%s: failed to scale clocks up %d\n",
 					__func__, err);
+
+		elapsed = ktime_to_us(ktime_sub(ktime_get(), start));
+		trace_ufshcd_profile_clk_scaling(dev_name(hba->dev),
+				"up by scale disable",
+				ktime_to_us(ktime_sub(ktime_get(), start)), err);
+		if (elapsed > UFS_SEC_LOG_MIN_SCALING_ELAPSED_TIME)
+			dev_err(hba->dev, "scale up by disable requested %s"
+					"(p/t: %u/%u): took %lld us, err %d.\n",
+					current->comm,
+					(unsigned int)current->pid,
+					(unsigned int)current->tgid,
+					elapsed, err);
 	}
 
 	ufshcd_release(hba);
@@ -2416,6 +2444,9 @@ ufshcd_wait_for_uic_cmd(struct ufs_hba *hba, struct uic_command *uic_cmd)
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	hba->active_uic_cmd = NULL;
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+	if (ret)
+		ufshcd_add_uic_command_trace(hba, uic_cmd, UFS_CMD_ERR);
 
 	return ret;
 }
@@ -4226,6 +4257,8 @@ check_upmcrs:
 	}
 out:
 	if (ret) {
+		ufshcd_add_uic_command_trace(hba, hba->active_uic_cmd,
+					     UFS_CMD_ERR);
 		ufshcd_print_host_state(hba);
 		ufshcd_print_pwr_info(hba);
 		ufshcd_print_evt_hist(hba);
@@ -4662,7 +4695,7 @@ static int ufshcd_complete_dev_init(struct ufs_hba *hba)
 					QUERY_FLAG_IDN_FDEVICEINIT, 0, &flag_res);
 		if (!flag_res)
 			break;
-		usleep_range(500, 1000);
+		usleep_range(5000, 10000);
 	} while (ktime_before(ktime_get(), timeout));
 
 	if (err) {
@@ -8901,11 +8934,12 @@ static int ufshcd_probe_hba(struct ufs_hba *hba, bool init_dev_params)
 	int ret;
 
 	ret = ufshcd_device_init(hba, init_dev_params);
-	if (ret)
+	if (ret && ret != -EAGAIN)
 		goto out;
 
 	if (!hba->pm_op_in_progress &&
-	    (hba->quirks & UFSHCD_QUIRK_REINIT_AFTER_MAX_GEAR_SWITCH)) {
+	    (hba->quirks & UFSHCD_QUIRK_REINIT_AFTER_MAX_GEAR_SWITCH ||
+	     ret == -EAGAIN)) {
 		/* Reset the device and controller before doing reinit */
 		ufshcd_device_reset(hba);
 		ufs_put_device_desc(hba);
@@ -9039,7 +9073,7 @@ static const struct scsi_host_template ufshcd_driver_template = {
 	.eh_host_reset_handler   = ufshcd_eh_host_reset_handler,
 	.eh_timed_out		= ufshcd_eh_timed_out,
 	.this_id		= -1,
-	.sg_tablesize		= SG_ALL,
+	.sg_tablesize		= SG_UFS,
 	.cmd_per_lun		= UFSHCD_CMD_PER_LUN,
 	.can_queue		= UFSHCD_CAN_QUEUE,
 	.max_segment_size	= PRDT_DATA_BYTE_COUNT_MAX,

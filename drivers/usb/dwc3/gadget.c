@@ -2671,7 +2671,7 @@ static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
 	}
 
 	dwc->connected = false;
-
+	dev_info(dwc->dev, "%s dwc->connected: %d\n", __func__, dwc->connected);
 	/*
 	 * Attempt to end pending SETUP status phase, and not wait for the
 	 * function to do so.
@@ -2768,8 +2768,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	 */
 	if (!is_on) {
 		pm_runtime_barrier(dwc->dev);
-		if (pm_runtime_suspended(dwc->dev))
+		if (pm_runtime_suspended(dwc->dev)) {
+			dev_err(dwc->dev, "Device is already suspended\n");
 			return 0;
+		}
 	}
 
 	/*
@@ -2779,6 +2781,8 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	 */
 	ret = pm_runtime_get_sync(dwc->dev);
 	if (!ret || ret < 0) {
+		dev_err(dwc->dev,
+			"Runtime PM resume failed or unnecessary (ret=%d)\n", ret);
 		pm_runtime_put(dwc->dev);
 		if (ret < 0)
 			pm_runtime_set_suspended(dwc->dev);
@@ -2786,6 +2790,9 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	}
 
 	if (dwc->pullups_connected == is_on) {
+		dev_err(dwc->dev,
+		"USB pull-up already %s, skipping reconfiguration\n",
+		is_on ? "connected" : "disconnected");
 		pm_runtime_put(dwc->dev);
 		return 0;
 	}
@@ -4008,7 +4015,7 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 	dwc3_gadget_dctl_write_safe(dwc, reg);
 
 	dwc->connected = false;
-
+	dev_info(dwc->dev, "%s dwc->connected: %d\n", __func__, dwc->connected);
 	dwc3_disconnect_gadget(dwc);
 
 	dwc->gadget->speed = USB_SPEED_UNKNOWN;
@@ -4041,7 +4048,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 	 * transfers here, and avoid allowing of request queuing.
 	 */
 	dwc->connected = false;
-
+	dev_info(dwc->dev, "%s dwc->connected: %d\n", __func__, dwc->connected);
 	/*
 	 * WORKAROUND: DWC3 revisions <1.88a have an issue which
 	 * would cause a missing Disconnect Event if there's a

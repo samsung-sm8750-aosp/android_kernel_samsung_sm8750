@@ -139,6 +139,7 @@ def get_gki_modules_list(arch = None):
 
 _KUNIT_FRAMEWORK_MODULES = [
     "lib/kunit/kunit.ko",
+
 ]
 
 # Common Kunit test modules

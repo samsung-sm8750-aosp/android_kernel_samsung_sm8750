@@ -107,10 +107,19 @@
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
 
+#ifdef CONFIG_RKP
+#include <linux/rkp.h>
+#endif
+#ifdef CONFIG_KDP
+#include <linux/kdp.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
 
+#if defined(CONFIG_KUNIT) && defined(CONFIG_CC_IS_GCC)
 #include <kunit/test.h>
+#endif
 
 static int kernel_init(void *);
 
@@ -933,10 +942,18 @@ void start_kernel(void)
 	trap_init();
 	mm_core_init();
 	poking_init();
+#ifdef CONFIG_RKP
+	rkp_init();
+#endif
+
 	ftrace_init();
 
 	/* trace_printk can be enabled here */
 	early_trace_init();
+	
+#ifdef CONFIG_KDP
+	kdp_enable = true;
+#endif
 
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
@@ -1047,6 +1064,10 @@ void start_kernel(void)
 		efi_enter_virtual_mode();
 #endif
 	thread_stack_cache_init();
+#ifdef CONFIG_KDP
+	if (kdp_enable)
+		kdp_init();
+#endif
 	cred_init();
 	fork_init();
 	proc_caches_init();
@@ -1467,8 +1488,12 @@ static int __ref kernel_init(void *unused)
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
-		if (!ret)
+		if (!ret) {
+#ifdef CONFIG_RKP
+			rkp_deferred_init();
+#endif
 			return 0;
+		}
 		pr_err("Failed to execute %s (error %d)\n",
 		       ramdisk_execute_command, ret);
 	}
@@ -1552,7 +1577,9 @@ static noinline void __init kernel_init_freeable(void)
 
 	do_basic_setup();
 
+#if defined(CONFIG_KUNIT) && defined(CONFIG_CC_IS_GCC)
 	kunit_run_all_tests();
+#endif
 
 	wait_for_initramfs();
 	console_on_rootfs();

@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+sec_boot_stat.ko
+sec_log_buf.ko
+sec_debug.ko
+sec_arm64_ap_context.ko
+sec_qc_logger.ko
+abc.ko
+softdog.ko
+i2c-algo-bit.ko
+i2c-gpio.ko
 arm_smmu.ko
 gic_intr_routing.ko
 iommu-logger.ko
@@ -38,6 +47,7 @@ clk-qcom.ko
 qcom_cpu_vendor_hooks.ko
 sched-walt.ko
 sched-walt-debug.ko
+sec_pm_log.ko
 thermal_pause.ko
 cpu_hotplug.ko
 debug-regulator.ko
@@ -95,7 +105,7 @@ qcom_aoss.ko
 msm_qmp.ko
 ufshcd-crypto-qti.ko
 qcom_ice.ko
-ufs-qcom.ko
+ufs_qcom.ko
 gh_arm_drv.ko
 gh_dbl.ko
 gh_msgq.ko
@@ -117,3 +127,31 @@ qcom-cpufreq-thermal.ko
 gh_virt_wdt.ko
 bcl_pmic5.ko
 qcom-cpufreq-hw.ko
+i2c-msm-geni.ko
+msm_gpi.ko
+sec_blk_helper.ko
+sec_class.ko
+sec_crashkey.ko
+sec_crashkey_long.ko
+sec_debug_region.ko
+sec_key_notifier.ko
+sec_param.ko
+sec_pmsg.ko
+sec_reboot_cmd.ko
+sec_qc_upload_cause.ko
+sec_upload_cause.ko
+sec_qc_debug.ko
+sec_qc_summary.ko
+sec_qc_dbg_partition.ko
+sec_qc_param.ko
+sec_qc_qcom_reboot_reason.ko
+sec_qc_rbcmd.ko
+sec_qc_rst_exinfo.ko
+memory_dump_v2.ko
+lcd.ko
+blk-sec-common.ko
+blk-sec-stats.ko
+blk-sec-wb.ko
+ssg.ko
+sec_ipc_tiantong.ko
+

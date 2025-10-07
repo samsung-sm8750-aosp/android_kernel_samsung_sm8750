@@ -6,6 +6,14 @@
 #include <linux/glob.h>
 #include <linux/moduleparam.h>
 
+#if IS_ENABLED(CONFIG_SEC_KUNIT)
+#include <kunit/mock.h>
+#else
+#ifndef EXPORT_SYMBOL_KUNIT
+#define EXPORT_SYMBOL_KUNIT(sym)    /* nothing */
+#endif
+#endif /* CONFIG_SEC_KUNIT */
+
 /*
  * These symbols point to the .kunit_test_suites section and are defined in
  * include/asm-generic/vmlinux.lds.h, and consequently must be extern.
@@ -352,6 +360,7 @@ out:
 	kunit_handle_shutdown();
 	return err;
 }
+EXPORT_SYMBOL_KUNIT(kunit_run_all_tests);
 
 #if IS_BUILTIN(CONFIG_KUNIT_TEST)
 #include "executor_test.c"

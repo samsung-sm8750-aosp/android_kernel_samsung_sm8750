@@ -107,6 +107,7 @@
 #define to_ngd(d)	container_of(d, struct qcom_slim_ngd, dev)
 
 #define CREATE_TRACE_POINTS
+#define POWER_ON_RETRY_COUNT 5
 #include "trace.h"
 
 void __slimbus_dbg(const char *func, const char *fmt, ...)
@@ -244,6 +245,7 @@ enum slimbus_pm_enum_type_v01 {
 	SLIMBUS_PM_ENUM_TYPE_MIN_ENUM_VAL_V01 = INT_MIN,
 	SLIMBUS_PM_INACTIVE_V01 = 1,
 	SLIMBUS_PM_ACTIVE_V01 = 2,
+	SLIMBUS_PM_ERR_FATAL_V01 = 3,
 	SLIMBUS_PM_ENUM_TYPE_MAX_ENUM_VAL_V01 = INT_MAX,
 };
 
@@ -488,7 +490,7 @@ static int qcom_slim_qmi_send_power_request(struct qcom_slim_ngd_ctrl *ctrl,
 	/* Check the response */
 	if (resp.resp.result != QMI_RESULT_SUCCESS_V01) {
 		SLIM_ERR(ctrl, "QMI request failed 0x%x\n",
-			resp.resp.result);
+			 resp.resp.result);
 		return -EREMOTEIO;
 	}
 
@@ -590,6 +592,30 @@ static int qcom_slim_qmi_power_request(struct qcom_slim_ngd_ctrl *ctrl,
 	else
 		req.pm_req = SLIMBUS_PM_INACTIVE_V01;
 
+	req.resp_type_valid = 0;
+
+	return qcom_slim_qmi_send_power_request(ctrl, &req);
+}
+
+/**
+ * qcom_slim_qmi_err_fatal_request() - Request a QMI error fatal event
+ *
+ * @ctrl: Pointer to the SLIMbus NGD controller structure
+ *
+ * This function sends a request to handle a QMI error fatal event.
+ * If the `active` parameter is true, the function activates the
+ * error fatal request.
+ * If `active` is false, it deactivates the request.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+
+static int qcom_slim_qmi_err_fatal_request(struct qcom_slim_ngd_ctrl *ctrl)
+{
+	struct slimbus_power_req_msg_v01 req;
+
+	SLIM_INFO(ctrl, "%s start\n", __func__);
+	req.pm_req = SLIMBUS_PM_ERR_FATAL_V01;
 	req.resp_type_valid = 0;
 
 	return qcom_slim_qmi_send_power_request(ctrl, &req);
@@ -1162,6 +1188,9 @@ static int qcom_slim_ngd_xfer_msg_sync(struct slim_controller *ctrl,
 	if (!timeout) {
 		SLIM_WARN(dev, "TX sync timed out:MC:0x%x,mt:0x%x", txn->mc,
 				txn->mt);
+		ret = qcom_slim_qmi_err_fatal_request(dev);
+		if (ret)
+			SLIM_ERR(dev, "%s: Error fatal request failed\n", __func__);
 		ret = -ETIMEDOUT;
 		goto pm_put;
 	}
@@ -1294,6 +1323,9 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 		slim_free_txn_tid(ctrl, &txn);
 		SLIM_WARN(dev, "TX ACT_CHAN timed out:MC:0x%x,mt:0x%x", txn.mc,
 				txn.mt);
+		ret = qcom_slim_qmi_err_fatal_request(dev);
+		if (ret)
+			SLIM_ERR(dev, "%s: Error fatal request failed\n", __func__);
 		return ret;
 	}
 
@@ -1314,6 +1346,9 @@ static int qcom_slim_ngd_enable_stream(struct slim_stream_runtime *rt)
 		slim_free_txn_tid(ctrl, &txn);
 		SLIM_INFO(dev, "TX RECONFIG timed out:MC:0x%x,mt:0x%x", txn.mc,
 				txn.mt);
+		ret = qcom_slim_qmi_err_fatal_request(dev);
+		if (ret)
+			SLIM_ERR(dev, "%s: Error fatal request failed\n", __func__);
 	}
 
 	SLIM_INFO(dev, "%s End ret : %d\n", __func__, ret);
@@ -1388,6 +1423,9 @@ static int qcom_slim_ngd_disable_stream(struct slim_stream_runtime *rt)
 		slim_free_txn_tid(ctrl, &txn);
 		SLIM_WARN(dev, "TX RECONFIG timed out:MC:0x%x,mt:0x%x ret:%d\n",
 				txn.mc,	txn.mt, ret);
+		ret = qcom_slim_qmi_err_fatal_request(dev);
+		if (ret)
+			SLIM_ERR(dev, "%s: Error fatal request failed\n", __func__);
 	}
 
 	SLIM_INFO(dev, "%s End ret %d\n", __func__, ret);
@@ -1498,6 +1536,7 @@ static int qcom_slim_ngd_power_up(struct qcom_slim_ngd_ctrl *ctrl)
 	struct qcom_slim_ngd *ngd = ctrl->ngd;
 	u32 cfg, laddr, rx_msgq;
 	int timeout, ret = 0;
+	int j = 0;
 
 	SLIM_INFO(ctrl, "SLIM: NGD power up\n");
 	if (ctrl->state == QCOM_SLIM_NGD_CTRL_DOWN) {
@@ -1513,9 +1552,28 @@ static int qcom_slim_ngd_power_up(struct qcom_slim_ngd_ctrl *ctrl)
 		SLIM_INFO(ctrl, "Sending QMI power on request\n");
 		ret = qcom_slim_qmi_power_request(ctrl, true);
 		if (ret) {
-			SLIM_ERR(ctrl, "SLIM QMI power request failed:%d\n",
-					ret);
-			return ret;
+			do {
+				SLIM_ERR(ctrl, "%s: Power on request failed ret:%d retry:%d\n",
+					 __func__, ret, j);
+				ret = qcom_slim_qmi_power_request(ctrl, true);
+				if (!ret) {
+					SLIM_ERR(ctrl, "%s: Power on request is success\n",
+						 __func__);
+					ret = 0;
+					break;
+				}
+				j++;
+			} while (j <= POWER_ON_RETRY_COUNT);
+
+			if (j == POWER_ON_RETRY_COUNT + 1) {
+				SLIM_ERR(ctrl, "%s: Power on request failed after %d retries\n",
+					 __func__, j);
+				ret = qcom_slim_qmi_err_fatal_request(ctrl);
+				if (ret)
+					SLIM_ERR(ctrl, "%s: Error fatal request failed\n",
+						 __func__);
+				return ret;
+			}
 		}
 	}
 
@@ -2132,6 +2190,7 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 		ctrl->sysfs_created = true;
 	}
 
+	ctrl->dev = dev;
 	ctrl->nb.notifier_call = qcom_slim_ngd_ssr_notify;
 	ctrl->notifier = qcom_register_ssr_notifier("lpass", &ctrl->nb);
 	if (IS_ERR(ctrl->notifier)) {
@@ -2140,7 +2199,6 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 		goto remove_ipc_sysfs;
 	}
 
-	ctrl->dev = dev;
 	ctrl->framer.rootfreq = SLIM_ROOT_FREQ >> 3;
 	ctrl->framer.superfreq =
 		ctrl->framer.rootfreq / SLIM_CL_PER_SUPERFRAME_DIV8;

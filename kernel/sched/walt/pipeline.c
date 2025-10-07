@@ -97,6 +97,7 @@ void remove_heavy(struct walt_task_struct *wts)
 			if (wts->pipeline_cpu > -1)
 				have_heavy_list--;
 			heavy_wts[i] = NULL;
+			have_heavy_list--;
 			for (j = i; j < MAX_NR_PIPELINE - 1; j++) {
 				heavy_wts[j] = heavy_wts[j + 1];
 				heavy_wts[j + 1] = NULL;
@@ -429,6 +430,10 @@ bool find_heaviest_topapp(u64 window_start)
 	/* reset tasks that are no longer eligible for pipeline */
 	for (i = 0; i < MAX_NR_PIPELINE; i++) {
 		bool reset = true;
+
+		/* This place not macthed with comment but it simple here */
+		if (heavy_wts[i])
+			heavy_wts[i]->low_latency |= WALT_LOW_LATENCY_HEAVY_BIT;
 
 		if (!heavy_wts_to_drop[i])
 			continue;

@@ -80,6 +80,13 @@ __xhci_sideband_remove_endpoint(struct xhci_sideband *sb, struct xhci_virt_ep *e
 	 * Issue a stop endpoint command when an endpoint is removed.
 	 * The stop ep cmd handler will handle the ring cleanup.
 	 */
+
+	if (!ep || ep->sideband != sb) {
+		pr_err("UTT4:Skipping remove_endpoint: ep is NULL or mismatched sideband\n");
+		return;
+	}
+
+	xhci_warn(sb->xhci, "UTT5:Removing endpoint: ep_index=%u\n", ep->ep_index);
 	xhci_stop_endpoint_sync(sb->xhci, ep, 0, GFP_KERNEL);
 
 	ep->sideband = NULL;
@@ -171,10 +178,14 @@ xhci_sideband_remove_endpoint(struct xhci_sideband *sb,
 		return -ENODEV;
 	}
 
+	xhci_warn(sb->xhci, "UTT1:Removing endpoint: ep_index=%u\n", ep_index);
+
 	__xhci_sideband_remove_endpoint(sb, ep);
 	if (ep->ring)
 		xhci_initialize_ring_info(ep->ring, 1);
 	mutex_unlock(&sb->mutex);
+
+	xhci_warn(sb->xhci, "UTT2:Endpoint removal complete: ep_index=%u\n", ep_index);
 
 	return 0;
 }
@@ -192,6 +203,8 @@ xhci_sideband_stop_endpoint(struct xhci_sideband *sb,
 
 	if (!ep || ep->sideband != sb)
 		return -EINVAL;
+
+	xhci_warn(sb->xhci, "UTT3:Stopping endpoint: ep_index=%u\n", ep_index);
 
 	return xhci_stop_endpoint_sync(sb->xhci, ep, 0, GFP_KERNEL);
 }

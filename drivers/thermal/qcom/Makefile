@@ -14,6 +14,9 @@ qti_qmi_sensor_v2-y += thermal_sensor_service_v02.o qmi_sensors_v2.o
 obj-$(CONFIG_QTI_QMI_COOLING_DEVICE) += qti_qmi_cdev.o
 qti_qmi_cdev-y += thermal_mitigation_device_service_v01.o qmi_cooling.o
 
+obj-$(CONFIG_QTI_QMI_COOLING_DEVICE) += qti_qmi_ss_cdev.o
+qti_qmi_ss_cdev-y += thermal_mitigation_device_service_v01.o qmi_htp_cooling.o
+
 obj-$(CONFIG_QTI_POLICY_ENGINE_SENSOR) += policy_engine.o
 obj-$(CONFIG_QTI_BCL_PMIC5) += bcl_pmic5.o
 bcl_pmic5-y +=  qti_bcl_pmic5.o qti_bcl_stats.o

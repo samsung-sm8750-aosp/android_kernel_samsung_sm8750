@@ -772,3 +772,7 @@ obj-$(CONFIG_SND_SOC_LPASS_TX_MACRO)	+= snd-soc-lpass-tx-macro.o
 
 # Mux
 obj-$(CONFIG_SND_SOC_SIMPLE_MUX)	+= snd-soc-simple-mux.o
+
+
+snd-soc-cs40l26-objs := cs40l26-a2h.o
+obj-$(CONFIG_SND_SOC_CS40L26)	+= snd-soc-cs40l26.o

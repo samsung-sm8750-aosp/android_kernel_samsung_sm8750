@@ -23,7 +23,7 @@
 
 #include "qrtr.h"
 
-#define QRTR_LOG_PAGE_CNT 4
+#define QRTR_LOG_PAGE_CNT 64
 #define QRTR_INFO(ctx, x, ...)				\
 	ipc_log_string(ctx, x, ##__VA_ARGS__)
 
@@ -153,11 +153,14 @@ u32 qrtr_ports_next = QRTR_MIN_EPH_SOCKET;
 static DEFINE_SPINLOCK(qrtr_port_lock);
 
 /* backup buffers */
-#define QRTR_BACKUP_HI_NUM	5
+#define QRTR_BACKUP_HI_NUM	10
 #define QRTR_BACKUP_HI_SIZE	SZ_16K
+#define QRTR_BACKUP_MD_NUM	20
+#define QRTR_BACKUP_MD_SIZE	SZ_1K
 #define QRTR_BACKUP_LO_NUM	20
-#define QRTR_BACKUP_LO_SIZE	SZ_1K
+#define QRTR_BACKUP_LO_SIZE	SZ_256
 static struct sk_buff_head qrtr_backup_lo;
+static struct sk_buff_head qrtr_backup_md;
 static struct sk_buff_head qrtr_backup_hi;
 static struct work_struct qrtr_backup_work;
 
@@ -964,6 +967,16 @@ static void qrtr_alloc_backup(struct work_struct *work)
 			break;
 		skb_queue_tail(&qrtr_backup_lo, skb);
 	}
+
+	while (skb_queue_len(&qrtr_backup_md) < QRTR_BACKUP_MD_NUM) {
+		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
+					   QRTR_BACKUP_MD_SIZE, 0, &errcode,
+					   GFP_KERNEL);
+		if (!skb)
+			break;
+		skb_queue_tail(&qrtr_backup_md, skb);
+	}
+
 	while (skb_queue_len(&qrtr_backup_hi) < QRTR_BACKUP_HI_NUM) {
 		skb = alloc_skb_with_frags(sizeof(struct qrtr_hdr_v1),
 					   QRTR_BACKUP_HI_SIZE, 0, &errcode,
@@ -980,6 +993,8 @@ static struct sk_buff *qrtr_get_backup(size_t len)
 
 	if (len < QRTR_BACKUP_LO_SIZE)
 		skb = skb_dequeue(&qrtr_backup_lo);
+	else if (len < QRTR_BACKUP_MD_SIZE)
+		skb = skb_dequeue(&qrtr_backup_md);
 	else if (len < QRTR_BACKUP_HI_SIZE)
 		skb = skb_dequeue(&qrtr_backup_hi);
 
@@ -992,6 +1007,7 @@ static struct sk_buff *qrtr_get_backup(size_t len)
 static void qrtr_backup_init(void)
 {
 	skb_queue_head_init(&qrtr_backup_lo);
+	skb_queue_head_init(&qrtr_backup_md);
 	skb_queue_head_init(&qrtr_backup_hi);
 	INIT_WORK(&qrtr_backup_work, qrtr_alloc_backup);
 	queue_work(system_unbound_wq, &qrtr_backup_work);
@@ -1001,6 +1017,7 @@ static void qrtr_backup_deinit(void)
 {
 	cancel_work_sync(&qrtr_backup_work);
 	skb_queue_purge(&qrtr_backup_lo);
+	skb_queue_purge(&qrtr_backup_md);
 	skb_queue_purge(&qrtr_backup_hi);
 }
 
@@ -1027,9 +1044,10 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	int svc_id;
 	gfp_t flag;
 
-	if (len == 0 || len & 3)
+	if (len == 0 || len & 3) {
+		pr_err("qrtr: Invalid len %zu\n", len);
 		return -EINVAL;
-
+	}
 	flag = (ep->in_thread ? GFP_KERNEL : GFP_ATOMIC) | __GFP_NOWARN;
 	skb = alloc_skb_with_frags(sizeof(*v1), len, 0, &errcode, flag);
 	if (!skb) {
@@ -1048,8 +1066,10 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 
 	switch (ver) {
 	case QRTR_PROTO_VER_1:
-		if (len < sizeof(*v1))
+		if (len < sizeof(*v1)) {
+			pr_err("qrtr: len < sizeof(*v1)\n");
 			goto err;
+		}
 		v1 = data;
 		hdrlen = sizeof(*v1);
 
@@ -1063,8 +1083,10 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 		size = le32_to_cpu(v1->size);
 		break;
 	case QRTR_PROTO_VER_2:
-		if (len < sizeof(*v2))
+		if (len < sizeof(*v2)) {
+			pr_err("qrtr: len < sizeof(*v2)\n");
 			goto err;
+		}
 		v2 = data;
 		hdrlen = sizeof(*v2) + v2->optlen;
 
@@ -1090,17 +1112,25 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 	if (cb->dst_port == QRTR_PORT_CTRL_LEGACY)
 		cb->dst_port = QRTR_PORT_CTRL;
 
-	if (!size || len != ALIGN(size, 4) + hdrlen)
+	if (!size || len != ALIGN(size, 4) + hdrlen) {
+		pr_err("qrtr: Invalid size or len not aligned, size=%zx, len=%zu\n",
+			size, len);
 		goto err;
+	}
 
 	if ((cb->type == QRTR_TYPE_NEW_SERVER ||
 	     cb->type == QRTR_TYPE_RESUME_TX) &&
-	    size < sizeof(struct qrtr_ctrl_pkt))
+	    size < sizeof(struct qrtr_ctrl_pkt)) {
+		pr_err("qrtr: Error: cb->type=0x%x, size=%zx\n",
+			cb->type, size);
 		goto err;
+	}
 
 	if (cb->dst_port != QRTR_PORT_CTRL && cb->type != QRTR_TYPE_DATA &&
-	    cb->type != QRTR_TYPE_RESUME_TX)
+	    cb->type != QRTR_TYPE_RESUME_TX) {
+		pr_err("qrtr: cb Error: cb->type=0x%x\n", cb->type);
 		goto err;
+	}
 
 	skb->data_len = size;
 	skb->len = size;
@@ -1134,7 +1164,12 @@ int qrtr_endpoint_post(struct qrtr_endpoint *ep, const void *data, size_t len)
 
 		if (sock_queue_rcv_skb(&ipc->sk, skb)) {
 			qrtr_port_put(ipc);
+			pr_err("qrtr: Error NS socket full\n");
 			goto err;
+		}
+		if(svc_id == 0x1000)
+		{
+			pr_err("QRTR: Packet written into the socket successfully. src[0x%x:0x%x] dst[0x%x:0x%x]\n",cb->src_node,cb->src_port,cb->dst_node,cb->dst_port);
 		}
 
 		/* Force wakeup based on services */

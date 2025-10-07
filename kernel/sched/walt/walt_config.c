@@ -40,7 +40,6 @@ void walt_config(void)
 	sysctl_sched_many_wakeup_threshold = WALT_MANY_WAKEUP_DEFAULT;
 	sysctl_walt_rtg_cfs_boost_prio = 99; /* disabled by default */
 	sysctl_sched_sync_hint_enable = 1;
-	sysctl_panic_on_walt_bug = walt_debug_initial_values();
 	sysctl_sched_skip_sp_newly_idle_lb = 1;
 	sysctl_sched_hyst_min_coloc_ns = 80000000;
 	sysctl_sched_idle_enough = SCHED_IDLE_ENOUGH_DEFAULT;
@@ -125,10 +124,11 @@ void walt_config(void)
 		soc_feat_unset(SOC_ENABLE_PER_TASK_BOOST_ON_MID_BIT);
 		trailblazer_floor_freq[0] = 1000000;
 		debugfs_walt_features |= WALT_FEAT_TRAILBLAZER_BIT;
+		debugfs_walt_features |= WALT_FEAT_UCLAMP_FREQ_BIT;
 		soc_feat_unset(SOC_ENABLE_COLOCATION_PLACEMENT_BOOST_BIT);
 		soc_feat_set(SOC_ENABLE_FT_BOOST_TO_ALL);
 		oscillate_period_ns = 8000000;
-		soc_feat_unset(SOC_ENABLE_EXPERIMENT3);
+		soc_feat_set(SOC_ENABLE_EXPERIMENT3);
 		/*G + P*/
 		cpumask_copy(&pipeline_sync_cpus, cpu_possible_mask);
 		cpumask_copy(&storage_boost_cpus, cpu_possible_mask);

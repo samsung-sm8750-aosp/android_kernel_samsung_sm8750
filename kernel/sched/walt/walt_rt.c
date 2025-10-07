@@ -256,7 +256,16 @@ static void walt_select_task_rq_rt(void *unused, struct task_struct *task, int c
 
 	if (unlikely(walt_disabled))
 		return;
-
+	int key_thread_cpu = WALT_NR_CPUS-1;
+	if (task->android_vendor_data2 >= 1) {
+		if (cpu_active(key_thread_cpu)) {
+			*new_cpu = key_thread_cpu;
+			goto out;
+		} else if (cpu_active(--key_thread_cpu)) {
+			*new_cpu = key_thread_cpu;
+			goto out;
+		}
+	}
 	/* For anything but wake ups, just return the task_cpu */
 	if (sd_flag != SD_BALANCE_WAKE && sd_flag != SD_BALANCE_FORK) {
 		fastpath = NON_WAKEUP;

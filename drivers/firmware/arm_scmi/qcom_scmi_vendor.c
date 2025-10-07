@@ -135,8 +135,10 @@ static int qcom_scmi_vendor_protocol_init(const struct scmi_protocol_handle *ph)
 	ret = ph->xops->version_get(ph, &version);
 	if (ret == -ETIMEDOUT)
 		ret = -EPROBE_DEFER;
-	if (ret)
+	if (ret) {
+		dev_err(ph->dev, "Unable to get version\n");
 		return dev_err_probe(ph->dev, ret, "Unable to get version\n");
+	}
 
 	dev_dbg(ph->dev, "qcom scmi version %d.%d\n",
 		PROTOCOL_REV_MAJOR(version), PROTOCOL_REV_MINOR(version));

@@ -417,6 +417,7 @@ static struct gdsc gpu_cc_cx_gdsc = {
 	.pwrsts = PWRSTS_OFF_ON,
 	.flags = RETAIN_FF_ENABLE | VOTABLE,
 	.supply = "vdd_cx",
+	.sw_override_support = true,
 };
 
 static int gdsc_cx_do_nothing(struct generic_pm_domain *domain)

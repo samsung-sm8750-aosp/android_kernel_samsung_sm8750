@@ -258,12 +258,15 @@ def parse_tests(request: KunitParseRequest, metadata: kunit_json.Metadata, input
 	return KunitResult(KunitStatus.SUCCESS, parse_time), test
 
 def run_tests(linux: kunit_kernel.LinuxSourceTree,
-	      request: KunitRequest) -> KunitResult:
+	      request: KunitRequest, cli_args) -> KunitResult:
 	run_start = time.time()
 
 	config_result = config_tests(linux, request)
 	if config_result.status != KunitStatus.SUCCESS:
 		return config_result
+
+	linux.add_external_config(cli_args.external_config)
+	linux.update_config(cli_args.build_dir, cli_args.make_options)
 
 	build_result = build_tests(linux, request)
 	if build_result.status != KunitStatus.SUCCESS:
@@ -413,7 +416,9 @@ def add_parse_opts(parser: argparse.ArgumentParser) -> None:
 			    help='Prints parsed test results as JSON to stdout or a file if '
 			    'a filename is specified. Does nothing if --raw_output is set.',
 			    type=str, const='stdout', default=None, metavar='FILE')
-
+	parser.add_argument('-t', '--external_config', nargs='+',
+			    help='run kunit with a specific target kunitconfig',
+			    type=str)
 
 def tree_from_args(cli_args: argparse.Namespace) -> kunit_kernel.LinuxSourceTree:
 	"""Returns a LinuxSourceTree based on the user's arguments."""
@@ -456,7 +461,7 @@ def run_handler(cli_args: argparse.Namespace) -> None:
 					run_isolated=cli_args.run_isolated,
 					list_tests=cli_args.list_tests,
 					list_tests_attr=cli_args.list_tests_attr)
-	result = run_tests(linux, request)
+	result = run_tests(linux, request, cli_args)
 	if result.status != KunitStatus.SUCCESS:
 		sys.exit(1)
 

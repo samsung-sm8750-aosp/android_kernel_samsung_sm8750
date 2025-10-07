@@ -22,6 +22,7 @@ load(
     "kernel_uapi_headers_cc_library",
     "merged_kernel_uapi_headers",
     "super_image",
+    "super_image_kunit",
     "unsparsed_image",
 )
 load(":avb_boot_img.bzl", "avb_sign_boot_image")
@@ -31,6 +32,8 @@ load(":msm_abl.bzl", "define_abl_dist")
 load(":msm_common.bzl", "define_top_level_config", "gen_config_without_source_lines", "get_out_dir")
 load(":msm_dtc.bzl", "define_dtc_dist")
 load(":target_variants.bzl", "la_variants")
+load(":lego.bzl", "lego_dtbo_list")
+load(":kunit.bzl", "kunit_module_list")
 
 def _define_build_config(
         msm_target,
@@ -109,6 +112,8 @@ EOF
         ] + [fragment for fragment in build_config_fragments] + [
             "build.config.msm.common",
             "build.config.msm.perf",
+            "build.config.msm.perf.sec",
+            "build.config.lego",
         ],
     )
 
@@ -308,11 +313,19 @@ def _define_image_build(
         output_group = "vendor_dlkm.img",
     )
 
-    super_image(
-        name = "{}_super_image".format(target),
-        system_dlkm_image = ":{}_system_dlkm_image_file".format(target),
-        vendor_dlkm_image = ":{}_vendor_dlkm_image_file".format(target),
-    )
+    if "lib/kunit/kunit_manager.ko" in kunit_module_list:
+# If build with --kunit option, then kunit ko list will be generated ini kunit_module_list of kunit.bzl. If there is no --kunit option, kunit_module_list is empty.
+        super_image_kunit(
+            name = "{}_super_image".format(target),
+            system_dlkm_image = ":{}_system_dlkm_image_file".format(target),
+            vendor_dlkm_image = ":{}_vendor_dlkm_image_file".format(target),
+        )
+    else:
+        super_image(
+            name = "{}_super_image".format(target),
+            system_dlkm_image = ":{}_system_dlkm_image_file".format(target),
+            vendor_dlkm_image = ":{}_vendor_dlkm_image_file".format(target),
+        )
 
     unsparsed_image(
         name = "{}_unsparsed_image".format(target),
@@ -472,6 +485,8 @@ def define_msm_la(
 
     dtb_list = get_dtb_list(msm_target)
     dtbo_list = get_dtbo_list(msm_target)
+    dtbo_list = dtbo_list + lego_dtbo_list
+
     dtstree = get_dtstree(msm_target)
     vendor_ramdisk_binaries = get_vendor_ramdisk_binaries(target)
     gki_ramdisk_prebuilt_binary = get_gki_ramdisk_prebuilt_binary()

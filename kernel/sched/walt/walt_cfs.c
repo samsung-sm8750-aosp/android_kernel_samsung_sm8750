@@ -253,6 +253,8 @@ static inline bool walt_should_reject_fbt_cpu(struct walt_rq *wrq, struct task_s
 						int cpu, int order_index,
 						struct find_best_target_env *fbt_env)
 {
+	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;
+
 	if (!cpu_active(cpu))
 		return true;
 
@@ -276,6 +278,9 @@ static inline bool walt_should_reject_fbt_cpu(struct walt_rq *wrq, struct task_s
 		return true;
 
 	if (wrq->num_mvp_tasks > 0 && per_task_boost(p) != TASK_BOOST_STRICT_MAX)
+		return true;
+
+	if (is_storage_boost() && wts->iowaited && sched_ioirq_cpu(cpu))
 		return true;
 
 	return false;
@@ -1335,6 +1340,9 @@ void walt_cfs_enqueue_task(struct rq *rq, struct task_struct *p)
 	struct walt_rq *wrq = &per_cpu(walt_rq, cpu_of(rq));
 	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;
 	int mvp_prio = walt_get_mvp_task_prio(p);
+
+	if (p->nr_cpus_allowed == 1)
+		return;
 
 	if (mvp_prio == WALT_NOT_MVP)
 		return;

@@ -30,7 +30,7 @@
 #include "qcom_glink_native.h"
 
 #define GLINK_IRQ_ITERATION_LIMITS 10
-#define GLINK_LOG_PAGE_CNT 32
+#define GLINK_LOG_PAGE_CNT 64
 #define GLINK_INFO(ctxt, x, ...)					  \
 	ipc_log_string(ctxt, "[%s]: "x, __func__, ##__VA_ARGS__)
 
@@ -1623,7 +1623,7 @@ void qcom_glink_native_rx(struct qcom_glink *glink)
 	int ret = 0;
 
 	if (should_wake) {
-		dev_dbg(glink->dev, "%s: wakeup\n", __func__);
+		dev_err(glink->dev, "%s: wakeup\n", __func__);
 		glink_resume_pkt = true;
 		should_wake = false;
 		pm_system_wakeup();

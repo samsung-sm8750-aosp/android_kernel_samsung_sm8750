@@ -2,6 +2,16 @@ load(":target_variants.bzl", "la_variants")
 load(":msm_kernel_la.bzl", "define_msm_la")
 load(":msm_kernel_16k_la.bzl", "define_msm_16k_la")
 load(":image_opts.bzl", "boot_image_opts")
+load(":sec_bsp.bzl", "sec_bsp")
+load(":kunit.bzl", "kunit_module_list")
+load(":sec_block.bzl", "sec_block")
+load(":lego.bzl", "lego_module_list")
+load(":sec_usb.bzl", "sec_usb")
+load(":sec_sensor.bzl", "sec_sensor")
+load(":sec_audio.bzl", "sec_audio")
+load(":sec_power.bzl", "sec_power")
+load(":sec_mm.bzl", "sec_mm")
+load(":sec_ipc.bzl", "sec_ipc")
 
 target_name = "sun"
 
@@ -60,7 +70,7 @@ def define_sun():
         "drivers/gpu/drm/display/drm_display_helper.ko",
         "drivers/gpu/drm/display/drm_dp_aux_bus.ko",
         "drivers/hwmon/hwmon.ko",
-        "drivers/hwmon/qti_amoled_ecm.ko",
+        # "drivers/hwmon/qti_amoled_ecm.ko",
         "drivers/hwspinlock/qcom_hwspinlock.ko",
         "drivers/hwtracing/coresight/coresight.ko",
         "drivers/hwtracing/coresight/coresight-csr.ko",
@@ -87,9 +97,9 @@ def define_sun():
         "drivers/i3c/master/i3c-master-msm-geni.ko",
         "drivers/iio/adc/qcom-spmi-adc5-gen3.ko",
         "drivers/iio/adc/qcom-vadc-common.ko",
-        "drivers/iio/adc/qti-glink-adc.ko",
+        # "drivers/iio/adc/qti-glink-adc.ko",
         "drivers/input/misc/pm8941-pwrkey.ko",
-        "drivers/input/misc/qcom-hv-haptics.ko",
+        # "drivers/input/misc/qcom-hv-haptics.ko",
         "drivers/interconnect/qcom/icc-bcm-voter.ko",
         "drivers/interconnect/qcom/icc-debug.ko",
         "drivers/interconnect/qcom/icc-rpmh.ko",
@@ -133,10 +143,10 @@ def define_sun():
         "drivers/power/reset/qcom-pon.ko",
         "drivers/power/reset/qcom-reboot-reason.ko",
         "drivers/power/reset/reboot-mode.ko",
-        "drivers/power/supply/qti_battery_charger.ko",
+        # "drivers/power/supply/qti_battery_charger.ko",
         "drivers/regulator/debug-regulator.ko",
         "drivers/regulator/proxy-consumer.ko",
-        "drivers/regulator/qcom-amoled-regulator.ko",
+        # "drivers/regulator/qcom-amoled-regulator.ko",
         "drivers/regulator/qti-fixed-regulator.ko",
         "drivers/regulator/qti-ocp-notifier.ko",
         "drivers/regulator/rpmh-regulator.ko",
@@ -157,10 +167,10 @@ def define_sun():
         "drivers/slimbus/slim-qcom-ngd-ctrl.ko",
         "drivers/slimbus/slimbus.ko",
         "drivers/soc/qcom/adsp_sleepmon.ko",
-        "drivers/soc/qcom/altmode-glink.ko",
+        # "drivers/soc/qcom/altmode-glink.ko",
         "drivers/soc/qcom/boot_stats.ko",
         "drivers/soc/qcom/cdsprm.ko",
-        "drivers/soc/qcom/charger-ulog-glink.ko",
+        # "drivers/soc/qcom/charger-ulog-glink.ko",
         "drivers/soc/qcom/cmd-db.ko",
         "drivers/soc/qcom/cpu_phys_log_map.ko",
         "drivers/soc/qcom/cpucp_fast.ko",
@@ -180,7 +190,7 @@ def define_sun():
         "drivers/soc/qcom/debug_symbol.ko",
         "drivers/soc/qcom/dmesg_dumper.ko",
         "drivers/soc/qcom/eud.ko",
-        "drivers/soc/qcom/fsa4480-i2c.ko",
+        # "drivers/soc/qcom/fsa4480-i2c.ko",
         "drivers/soc/qcom/gh_tlmm_vm_mem_access.ko",
         "drivers/soc/qcom/gic_intr_routing.ko",
         "drivers/soc/qcom/glink_probe.ko",
@@ -209,7 +219,7 @@ def define_sun():
         "drivers/soc/qcom/panel_event_notifier.ko",
         "drivers/soc/qcom/pcie-pdc.ko",
         "drivers/soc/qcom/pdr_interface.ko",
-        "drivers/soc/qcom/pmic-glink-debug.ko",
+        # "drivers/soc/qcom/pmic-glink-debug.ko",
         "drivers/soc/qcom/pmic-pon-log.ko",
         "drivers/soc/qcom/qcom_aoss.ko",
         "drivers/soc/qcom/qcom_cpu_vendor_hooks.ko",
@@ -228,9 +238,9 @@ def define_sun():
         "drivers/soc/qcom/qfprom-sys.ko",
         "drivers/soc/qcom/qmi_helpers.ko",
         "drivers/soc/qcom/qsee_ipc_irq_bridge.ko",
-        "drivers/soc/qcom/qti_battery_debug.ko",
+        # "drivers/soc/qcom/qti_battery_debug.ko",
         "drivers/soc/qcom/qti_dmof_scmi.ko",
-        "drivers/soc/qcom/qti_pmic_glink.ko",
+        # "drivers/soc/qcom/qti_pmic_glink.ko",
         "drivers/soc/qcom/secure_buffer.ko",
         "drivers/soc/qcom/smem.ko",
         "drivers/soc/qcom/smp2p.ko",
@@ -256,6 +266,7 @@ def define_sun():
         "drivers/thermal/qcom/qti_cpufreq_cdev.ko",
         "drivers/thermal/qcom/qti_devfreq_cdev.ko",
         "drivers/thermal/qcom/qti_qmi_cdev.ko",
+        "drivers/thermal/qcom/qti_qmi_ss_cdev.ko",
         "drivers/thermal/qcom/qti_qmi_sensor_v2.ko",
         "drivers/thermal/qcom/qti_thermal_vendor_hooks.ko",
         "drivers/thermal/qcom/qti_userspace_cdev.ko",
@@ -263,7 +274,7 @@ def define_sun():
         "drivers/thermal/qcom/thermal_pause.ko",
         "drivers/tty/hvc/hvc_gunyah.ko",
         "drivers/tty/serial/msm_geni_serial.ko",
-        "drivers/ufs/host/ufs-qcom.ko",
+        "drivers/ufs/host/ufs_qcom.ko",
         "drivers/ufs/host/ufshcd-crypto-qti.ko",
         "drivers/uio/msm_sharedmem/msm_sharedmem.ko",
         "drivers/usb/dwc3/dwc3-msm.ko",
@@ -281,8 +292,9 @@ def define_sun():
         "drivers/usb/redriver/nb7vpq904m.ko",
         "drivers/usb/redriver/redriver.ko",
         "drivers/usb/repeater/repeater.ko",
-        "drivers/usb/repeater/repeater-qti-pmic-eusb2.ko",
-        "drivers/usb/typec/ucsi/ucsi_qti_glink.ko",
+        # "drivers/usb/repeater/repeater-qti-pmic-eusb2.ko",
+        # "drivers/usb/typec/ucsi/ucsi_qti_glink.ko",
+        "drivers/video/backlight/lcd.ko",
         "drivers/virt/gunyah/gh_ctrl.ko",
         "drivers/virt/gunyah/gh_dbl.ko",
         "drivers/virt/gunyah/gh_irq_lend.ko",
@@ -312,8 +324,6 @@ def define_sun():
         "drivers/cpuidle/governors/qcom_simple_lpm.ko",
         "drivers/hwtracing/coresight/coresight-etm4x.ko",
         "drivers/misc/lkdtm/lkdtm.ko",
-        "drivers/usb/misc/ehset.ko",
-        "drivers/usb/misc/lvstest.ko",
         "kernel/locking/locktorture.ko",
         "kernel/rcu/rcutorture.ko",
         "kernel/sched/walt/sched-walt-debug.ko",
@@ -350,10 +360,51 @@ def define_sun():
             kernel_vendor_cmdline_extras += ["nosoftlockup console=ttynull qcom_geni_serial.con_enabled=0"]
             board_bootconfig_extras += ["androidboot.serialconsole=0"]
 
+        mod_list = mod_list + sec_bsp(
+            target = target_name,
+            variant = variant
+        )
+
+        mod_list = mod_list + kunit_module_list
+        mod_list = mod_list + lego_module_list
+
+        mod_list = mod_list + sec_block(
+            target = target_name,
+            variant = variant
+        )
+
+        mod_list = mod_list + sec_usb(
+            target = target_name,
+            variant = variant
+        )
+        mod_list = mod_list + sec_sensor(
+            target = target_name,
+            variant = variant
+        )
+
+        mod_list = mod_list + sec_audio(
+            target = target_name,
+            variant = variant
+        )
+
+        mod_list = mod_list + sec_power(
+            target = target_name,
+            variant = variant
+        )
+
+        mod_list = mod_list + sec_mm()
+
+        mod_list = mod_list + sec_ipc(
+            target = target_name,
+            variant = variant
+        )
+
         define_msm_la(
             msm_target = target_name,
             variant = variant,
-            in_tree_module_list = mod_list,
+            in_tree_module_list = remove_unused_modules_by_sec(
+                mod_list = mod_list
+            ),
             boot_image_opts = boot_image_opts(
                 kernel_vendor_cmdline_extras = kernel_vendor_cmdline_extras,
                 board_kernel_cmdline_extras = board_kernel_cmdline_extras,
@@ -364,10 +415,25 @@ def define_sun():
         define_msm_16k_la(
             msm_target = target_name,
             variant = variant,
-            in_tree_module_list = mod_list,
+            in_tree_module_list = remove_unused_modules_by_sec(
+                mod_list = mod_list
+            ),
             boot_image_opts = boot_image_opts(
                 kernel_vendor_cmdline_extras = kernel_vendor_cmdline_extras,
                 board_kernel_cmdline_extras = board_kernel_cmdline_extras,
                 board_bootconfig_extras = board_bootconfig_extras,
             ),
         )
+def remove_unused_modules_by_sec(mod_list):
+    _mod_list = []
+    _sec_blocked_modules = [
+        # keep sorted
+        "drivers/soc/qcom/qcom_logbuf_boot_log.ko",
+        "drivers/soc/qcom/qcom_logbuf_vendor_hooks.ko",
+    ]
+
+    for mod in mod_list:
+        if not mod in _sec_blocked_modules:
+            _mod_list = _mod_list + [ mod ]
+
+    return _mod_list

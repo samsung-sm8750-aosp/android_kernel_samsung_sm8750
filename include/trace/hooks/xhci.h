@@ -23,4 +23,3 @@ DECLARE_HOOK(android_vh_xhci_resume,
 #endif /* _TRACE_HOOK_XHCI_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>
-

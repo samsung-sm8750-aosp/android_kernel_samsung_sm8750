@@ -1551,7 +1551,8 @@ static ssize_t sink_name_store(struct device *dev,
 	sink_name = kstrdup(buf, GFP_KERNEL);
 	if (!sink_name)
 		return -ENOMEM;
-	sink_name[size-1] = 0;
+	/* NOTE: junk code. duplicated string is already terminated */
+	// sink_name[size-1] = 0;
 
 	hash = hashlen_hash(hashlen_string(NULL, sink_name));
 	new_sink = coresight_get_sink_by_id(hash);

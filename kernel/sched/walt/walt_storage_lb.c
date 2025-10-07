@@ -18,6 +18,9 @@ static bool lb_ignore_cpus(int cpu, cpumask_t *dst_cpu_mask_to_avoid)
 	if (sched_cpu_high_irqload(cpu))
 		return true;
 
+	if (sched_ioirq_cpu(cpu))
+		return true;
+
 	/* ignore cpus curerntly doing load balancing/migrations */
 	if (is_reserved(cpu) || cpu_rq(cpu)->active_balance)
 		return true;

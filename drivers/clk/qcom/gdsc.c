@@ -51,6 +51,22 @@
 #define STATUS_POLL_TIMEOUT_US	1500
 #define TIMEOUT_US		500
 
+#define SW_OVERRIDE		BIT(0)
+#define HALT_REQ		BIT(0)
+#define HALT1_REQ_SW_SHIFT	8
+#define HALT2_REQ_SW_SHIFT	16
+#define HW_CTRL_REQ_SW_GDSR_OFFSET	0x14
+#define HW_CTRL_DVM_STATUS_OFFSET	0x8
+#define HW_CTRL_HALT1_STATUS_OFFSET	0xC
+#define HW_CTRL_IRQ_STATUS_OFFSET	0x18
+#define HW_CTRL_IRQ_CLEAR_OFFSET	0x20
+#define DVM_HALT1_REQ_SW_MASK	GENMASK_ULL(7, 0)
+#define HALT1_REQ_SW_MASK	GENMASK_ULL(15, 8)
+#define HALT2_REQ_SW_MASK	GENMASK_ULL(23, 16)
+#define PWR_DOWN_ACK_STATUS	GENMASK_ULL(15, 8)
+#define PWR_UP_ACK_STATUS	BIT(16)
+#define HW_CTRL_POLL_TIMEOUT_US		3000
+
 #define domain_to_gdsc(domain) container_of(domain, struct gdsc, pd)
 
 enum gdsc_status {
@@ -138,6 +154,159 @@ static int gdsc_update_collapse_bit(struct gdsc *sc, bool val)
 	return 0;
 }
 
+static void log_gdsc_debug_regs(struct gdsc *sc)
+{
+	u32 val;
+
+	pr_err("Dumping %s registers\n", sc->pd.name);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl, &val);
+	pr_err("HW_CTRL_CFG1_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr, &val);
+	pr_err("GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 4, &val);
+	pr_err("CFG_GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 8, &val);
+	pr_err("CFG2_GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 0xc, &val);
+	pr_err("CFG3_GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 0x10, &val);
+	pr_err("CFG4_GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl, &val);
+	pr_err("HW_CTRL_CFG1_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 4, &val);
+	pr_err("HW_CTRL_CFG2_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 8, &val);
+	pr_err("HW_CTRL_DVM_STATUS_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 0xc, &val);
+	pr_err("HW_CTRL_HALT1_STATUS_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 0x10, &val);
+	pr_err("HW_CTRL_HALT2_STATUS_GDSR : 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 0x14, &val);
+	pr_err("HW_CTRL_REQ_SW_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 0x18, &val);
+	pr_err("HW_CTRL_IRQ_STATUS_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl + 0x20, &val);
+	pr_err("HW_CTRL_IRQ_CLEAR_GDSR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gds_hw_ctrl, &val);
+	pr_err("HW_CTRL_CFG1_GDSR: 0x%.8x\n\n", val);
+}
+
+static int gdsc_enable_with_sw_override(struct gdsc *sc)
+{
+	int ret;
+	u32 regval;
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					DVM_HALT1_REQ_SW_MASK, 0);
+	ret = regmap_read_poll_timeout(sc->regmap, (sc->gds_hw_ctrl + HW_CTRL_DVM_STATUS_OFFSET),
+			regval, (regval & PWR_UP_ACK_STATUS), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("dvm pwr up ack failed ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+		return ret;
+	}
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					HALT1_REQ_SW_MASK, 0);
+	ret = regmap_read_poll_timeout(sc->regmap, (sc->gds_hw_ctrl + HW_CTRL_HALT1_STATUS_OFFSET),
+			regval, (regval & PWR_UP_ACK_STATUS), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("halt1 pwr up ack failed ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+		return ret;
+	}
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					HALT2_REQ_SW_MASK, 0);
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl, SW_OVERRIDE, 0);
+
+	pr_err("%s\n", __func__);
+	log_gdsc_debug_regs(sc);
+	return 0;
+}
+
+static void gdsc_disable_with_sw_override(struct gdsc *sc)
+{
+	int ret;
+	u32 regval;
+
+	gdsc_update_collapse_bit(sc, false);
+
+	ret = regmap_read_poll_timeout(sc->regmap, sc->gds_hw_ctrl,
+			regval, (regval & PWR_ON_MASK), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("GDSC power up failed after ack fail ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+	}
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl, SW_OVERRIDE, SW_OVERRIDE);
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					DVM_HALT1_REQ_SW_MASK, HALT_REQ);
+	ret = regmap_read_poll_timeout(sc->regmap, (sc->gds_hw_ctrl + HW_CTRL_DVM_STATUS_OFFSET),
+			regval, !(regval & PWR_DOWN_ACK_STATUS), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("dvm pwr dwn ack failed ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+	}
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					HALT1_REQ_SW_MASK, HALT_REQ << HALT1_REQ_SW_SHIFT);
+	ret = regmap_read_poll_timeout(sc->regmap, (sc->gds_hw_ctrl + HW_CTRL_HALT1_STATUS_OFFSET),
+			regval, !(regval & PWR_DOWN_ACK_STATUS), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("halt1 pwr dwn ack failed ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+	}
+
+	regmap_update_bits(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_REQ_SW_GDSR_OFFSET,
+					HALT2_REQ_SW_MASK, HALT_REQ << HALT2_REQ_SW_SHIFT);
+
+	gdsc_update_collapse_bit(sc, true);
+
+	ret = regmap_read_poll_timeout(sc->regmap, sc->gdscr + CFG_GDSCR_OFFSET,
+			regval, (regval & GDSC_POWER_DOWN_COMPLETE), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (ret) {
+		pr_err("GDSC power down complete failed ret=%d regval=0x%x\n", ret, regval);
+		log_gdsc_debug_regs(sc);
+	}
+
+	regmap_write(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_IRQ_CLEAR_OFFSET, BIT(0));
+
+	pr_err("%s\n", __func__);
+	log_gdsc_debug_regs(sc);
+}
+
+static void gds_hw_ctrl_poll_status(struct gdsc *sc)
+{
+	u32 regval, regval1;
+	bool vote;
+	int ret;
+
+	regmap_read(sc->regmap, 0x5004, &regval);
+	vote = !(regval & 0x1);
+
+	regmap_read(sc->regmap, 0x6004, &regval1);
+	vote |= !(regval1 & 0x1);
+
+	if (vote)
+		pr_info("vote: 0x%x vote1:0x%x\n", regval, regval1);;
+
+	ret = regmap_read_poll_timeout(sc->regmap, sc->gdscr + CFG_GDSCR_OFFSET,
+			regval, (regval & GDSC_POWER_DOWN_COMPLETE), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (!ret)
+		return;
+
+	ret = regmap_read_poll_timeout(sc->regmap, sc->gds_hw_ctrl + HW_CTRL_IRQ_STATUS_OFFSET,
+			regval, (regval & 0x1), 0, HW_CTRL_POLL_TIMEOUT_US);
+	if (!ret) {
+		pr_err("GDS HW controller irq triggered\n");
+		log_gdsc_debug_regs(sc);
+		gdsc_disable_with_sw_override(sc);
+	}
+}
+
 static int gdsc_toggle_logic(struct gdsc *sc, enum gdsc_status status,
 		bool wait)
 {
@@ -166,6 +335,10 @@ static int gdsc_toggle_logic(struct gdsc *sc, enum gdsc_status status,
 		 * unknown state
 		 */
 		udelay(TIMEOUT_US);
+
+		if (sc->sw_override_support && sc->gds_hw_ctrl)
+			gds_hw_ctrl_poll_status(sc);
+
 		goto out;
 	}
 
@@ -185,10 +358,24 @@ static int gdsc_toggle_logic(struct gdsc *sc, enum gdsc_status status,
 
 	ret = gdsc_poll_status(sc, status);
 	if (ret && sc->gds_hw_ctrl) {
-		pr_warn("%s enable timed out, Re-polling\n", sc->pd.name);
+		pr_err("%s enable timed out, Re-polling\n", sc->pd.name);
+		log_gdsc_debug_regs(sc);
 		ret = gdsc_poll_status(sc, status);
-	}
+		if (ret) {
+			log_gdsc_debug_regs(sc);
+			udelay(500);
+			log_gdsc_debug_regs(sc);
+			udelay(1000);
+			log_gdsc_debug_regs(sc);
+		}
+	}	
 	WARN(ret, "%s status stuck at 'o%s'", sc->pd.name, status ? "ff" : "n");
+
+	if (sc->sw_override_support && sc->gds_hw_ctrl && status == GDSC_ON) {
+		regmap_read(sc->regmap, sc->gds_hw_ctrl, &val);
+		if (val & SW_OVERRIDE)
+			return gdsc_enable_with_sw_override(sc);
+	}
 
 out:
 	if (!ret && status == GDSC_OFF && sc->rsupply) {
@@ -598,3 +785,134 @@ int gdsc_gx_do_nothing_enable(struct generic_pm_domain *domain)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(gdsc_gx_do_nothing_enable);
+
+
+static void gdsc_debug_print_registers(struct gdsc *sc)
+{
+	u32 val;
+
+	regmap_read(sc->regmap, sc->gdscr, &val);
+	pr_err("GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 4, &val);
+	pr_err("CFG_GDSCR: 0x%.8x\n", val);
+	regmap_read(sc->regmap, sc->gdscr + 8, &val);
+	pr_err("CFG2_GDSCR: 0x%.8x\n", val);
+
+	if (sc->gds_hw_ctrl) {
+		regmap_read(sc->regmap, sc->gds_hw_ctrl, &val);
+		pr_err("GDS_HW_CTRL: 0x%.8x\n", val);
+	}
+
+	if (sc->collapse_ctrl) {
+		regmap_read(sc->regmap, sc->collapse_ctrl, &val);
+		pr_err("COLLAPSE_CTRL: 0x%.8x\n", val);
+	}
+}
+
+static void genpd_dump_consumers(struct generic_pm_domain *genpd)
+{
+	static const char * const status_lookup[] = {
+		[RPM_ACTIVE] = "active",
+		[RPM_RESUMING] = "resuming",
+		[RPM_SUSPENDED] = "suspended",
+		[RPM_SUSPENDING] = "suspending"
+	};
+	struct pm_domain_data *pm_data;
+	const char *kobj_path;
+	const char *p = "";
+	struct device *dev;
+
+	pr_err("%-30s  %-50s\n", genpd->name, genpd->status ? "off" : "on");
+
+	pr_err("Consumers:\n");
+	list_for_each_entry(pm_data, &genpd->dev_list, list_node) {
+
+		kobj_path = kobject_get_path(&pm_data->dev->kobj,
+				genpd->flags & GENPD_FLAG_IRQ_SAFE ?
+				GFP_ATOMIC : GFP_KERNEL);
+		if (kobj_path == NULL)
+			continue;
+
+		dev = pm_data->dev;
+		if (dev->power.runtime_error)
+			p = "error";
+		else if (dev->power.disable_depth)
+			p = "unsupported";
+		else if (dev->power.runtime_status < ARRAY_SIZE(status_lookup))
+			p = status_lookup[dev->power.runtime_status];
+
+		pr_err("%-50s %-25s\n", kobj_path, p);
+
+		pr_err("usage_count:%d\n", atomic_read(&dev->power.usage_count));
+		pr_err("last_busy:%llu\n", dev->power.last_busy);
+		pr_err("timer_expires:%llu\n", dev->power.timer_expires);
+		pr_err("timer_state:%d\n", dev->power.suspend_timer.state);
+		pr_err("rpm_request:%d\n", dev->power.request);
+		pr_err("request_pending:%u\n", dev->power.request_pending);
+		pr_err("timer_autosuspends:%d\n", dev->power.timer_autosuspends);
+		pr_err("runtime_error:%d\n", dev->power.runtime_error);
+		pr_err("autosuspend_delay:%d\n", dev->power.autosuspend_delay);
+		pr_err("disable_depth:%u\n", dev->power.disable_depth);
+		pr_err("child_count:%d\n", atomic_read(&dev->power.child_count));
+		pr_err("deferred_resume:%u\n", dev->power.deferred_resume);
+		pr_err("ignore_children:%u\n", dev->power.ignore_children);
+		pr_err("use_autosuspend:%u\n", dev->power.use_autosuspend);
+		pr_err("current_time: %llu\n", ktime_get_mono_fast_ns());
+
+		kfree(kobj_path);
+	}
+
+	pr_err("device_count: %d\n", genpd->device_count);
+	pr_err("prepared_count: %d\n", genpd->prepared_count);
+	pr_err("suspended_count: %d\n", genpd->suspended_count);
+	pr_err("sd_count: %d\n", atomic_read(&genpd->sd_count));
+}
+
+void qcom_gdsc_pd_dump(struct device *device)
+{
+	struct generic_pm_domain *genpd, *child;
+	struct gpd_link *link;
+	struct gdsc *sc;
+
+	if (!device) {
+		pr_err("Null device handle passed\n");
+		return;
+	}
+
+	if (device && IS_ERR_OR_NULL(device->pm_domain)) {
+		pr_err("No pm_domain linked to device\n");
+		return;
+	}
+
+	genpd = pd_to_genpd(device->pm_domain);
+	if (IS_ERR(genpd)) {
+		pr_err("No pd linked to device\n");
+		return;
+	}
+
+	if (mutex_lock_interruptible(&genpd->mlock)) {
+		pr_err("Failed to acquire %s genpd lock\n", genpd->name);
+		return;
+	}
+
+	genpd_dump_consumers(genpd);
+
+	pr_err("Child_domains:\n");
+	list_for_each_entry(link, &genpd->parent_links, parent_node) {
+		child = link->child;
+		if (mutex_lock_interruptible(&child->mlock)) {
+			pr_err("Failed to acquire %s genpd lock\n", child->name);
+			mutex_unlock(&genpd->mlock);
+			return;
+		}
+		genpd_dump_consumers(child);
+		mutex_unlock(&child->mlock);
+	}
+
+	sc = domain_to_gdsc(genpd);
+	pr_err("Dumping %s registers\n", sc->pd.name);
+	gdsc_debug_print_registers(sc);
+
+	mutex_unlock(&genpd->mlock);
+}
+EXPORT_SYMBOL_GPL(qcom_gdsc_pd_dump);

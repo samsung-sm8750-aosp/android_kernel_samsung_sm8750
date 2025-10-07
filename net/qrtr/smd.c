@@ -24,6 +24,7 @@ static int qcom_smd_qrtr_callback(struct rpmsg_device *rpdev,
 				  void *data, int len, void *priv, u32 addr)
 {
 	struct qrtr_smd_dev *qdev = dev_get_drvdata(&rpdev->dev);
+	unsigned char *bytedata = (unsigned char *)data;
 	int rc;
 
 	if (!qdev) {
@@ -33,7 +34,10 @@ static int qcom_smd_qrtr_callback(struct rpmsg_device *rpdev,
 
 	rc = qrtr_endpoint_post(&qdev->ep, data, len);
 	if (rc == -EINVAL) {
-		dev_err(qdev->dev, "invalid ipcrouter packet\n");
+		dev_err(qdev->dev, "invalid ipcrouter packet, len=%d\n", len);
+		if (len > 0)
+			print_hex_dump(KERN_INFO, "invliad package : ", DUMP_PREFIX_ADDRESS, 16, 1,
+					bytedata, len, false);
 		/* return 0 to let smd drop the packet */
 		rc = 0;
 	}

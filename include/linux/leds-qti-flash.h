@@ -28,6 +28,10 @@ int qti_flash_led_prepare(struct led_trigger *trig,
 			int options, int *max_current);
 int qti_flash_led_set_param(struct led_trigger *trig,
 			struct flash_led_param param);
+#if IS_ENABLED(CONFIG_SENSORS_STK6D2X) || IS_ENABLED(CONFIG_SENSORS_TSL2511) || IS_ENABLED(CONFIG_SENSORS_STK6DAX)
+	int qti_flash_led_set_strobe_sel(struct led_trigger *trig,
+			int strobe_sel);
+#endif
 #else
 static inline int qti_flash_led_prepare(struct led_trigger *trig,
 					int options, int *max_current)
@@ -37,6 +41,13 @@ static inline int qti_flash_led_prepare(struct led_trigger *trig,
 
 static inline int qti_flash_led_set_param(struct led_trigger *trig,
 			struct flash_led_param param)
+{
+	return -EINVAL;
+}
+
+#if IS_ENABLED(CONFIG_SENSORS_STK6D2X) || IS_ENABLED(CONFIG_SENSORS_STK6DAX)
+static inline int qti_flash_led_set_strobe_sel(struct led_trigger *trig,
+			int strobe_sel);
 {
 	return -EINVAL;
 }
@@ -51,5 +62,6 @@ static inline int wled_flash_led_prepare(struct led_trigger *trig, int options,
 {
 	return -EINVAL;
 }
+#endif
 #endif
 #endif

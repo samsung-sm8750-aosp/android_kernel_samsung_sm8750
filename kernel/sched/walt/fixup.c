@@ -9,6 +9,9 @@
 #include <trace/hooks/topology.h>
 
 #include <linux/delay.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+
 #include "walt.h"
 #include "trace.h"
 
@@ -90,11 +93,61 @@ bool is_sched_lib_task(void)
 	return false;
 }
 
+static char cpu_cap_fixup_target[TASK_COMM_LEN];
+
+static int proc_cpu_capacity_fixup_target_show(struct seq_file *m, void *data)
+{
+	seq_printf(m, "%s\n", cpu_cap_fixup_target);
+	return 0;
+}
+
+static int proc_cpu_capacity_fixup_target_open(struct inode *inode,
+		struct file *file)
+{
+	return single_open(file, proc_cpu_capacity_fixup_target_show, NULL);
+}
+
+static ssize_t proc_cpu_capacity_fixup_target_write(struct file *file,
+		const char __user *buf, size_t count, loff_t *offs)
+{
+	char temp[TASK_COMM_LEN] = {0, };
+	int len = 0;
+
+	len = (count > TASK_COMM_LEN) ? TASK_COMM_LEN : count;
+	if (!len || copy_from_user(temp, buf, len))
+		return -EFAULT;
+
+	if (temp[len - 1] == '\n')
+		temp[len - 1] = '\0';
+
+	strlcpy(cpu_cap_fixup_target, temp, TASK_COMM_LEN);
+
+	return count;
+}
+
+static const struct proc_ops proc_cpu_capacity_fixup_target_op = {
+	.proc_open = proc_cpu_capacity_fixup_target_open,
+	.proc_write = proc_cpu_capacity_fixup_target_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
 static void android_rvh_show_max_freq(void *unused, struct cpufreq_policy *policy,
 				     unsigned int *max_freq)
 {
+	int curr_len = 0;
+
 	if (!cpuinfo_max_freq_cached)
 		return;
+
+	curr_len = strnlen(current->comm, TASK_COMM_LEN);
+	if (strnlen(cpu_cap_fixup_target, TASK_COMM_LEN) == curr_len) {
+		if (!strncmp(current->comm, cpu_cap_fixup_target, curr_len)) {
+			*max_freq = cpuinfo_max_freq_cached;
+			return;
+		}
+	}
 
 	if (!(BIT(policy->cpu) & sched_lib_mask_force))
 		return;
@@ -106,6 +159,16 @@ static void android_rvh_show_max_freq(void *unused, struct cpufreq_policy *polic
 static void android_rvh_cpu_capacity_show(void *unused,
 		unsigned long *capacity, int cpu)
 {
+	int curr_len = 0;
+
+	curr_len = strnlen(current->comm, TASK_COMM_LEN);
+	if (strnlen(cpu_cap_fixup_target, TASK_COMM_LEN) == curr_len) {
+		if (!strncmp(current->comm, cpu_cap_fixup_target, curr_len)) {
+			*capacity = SCHED_CAPACITY_SCALE;
+			return;
+		}
+	}
+
 	if (!soc_sched_lib_name_capacity)
 		return;
 
@@ -277,6 +340,10 @@ static void walt_do_sched_yield_before(void *unused, long *skip)
 
 void walt_fixup_init(void)
 {
+	if (!proc_create("cpu_capacity_fixup_target",
+			0660, NULL, &proc_cpu_capacity_fixup_target_op))
+		pr_err("Failed to register 'cpu_capacity_fixup_target'\n");
+
 	register_trace_android_rvh_show_max_freq(android_rvh_show_max_freq, NULL);
 	register_trace_android_rvh_cpu_capacity_show(android_rvh_cpu_capacity_show, NULL);
 	register_trace_android_rvh_before_do_sched_yield(walt_do_sched_yield_before, NULL);

@@ -31,10 +31,15 @@
 
 static DEFINE_VDD_REGULATORS(vdd_mm, VDD_NOMINAL_L1 + 1, 1, vdd_corner);
 static DEFINE_VDD_REGULATORS(vdd_mx, VDD_NOMINAL_L1 + 1, 1, vdd_corner);
+static DEFINE_VDD_REGULATORS(vdd_mxa, VDD_NOMINAL_L1 + 1, 1, vdd_corner);
 
 static struct clk_vdd_class *disp_cc_sun_regulators[] = {
 	&vdd_mm,
 	&vdd_mx,
+};
+
+static struct clk_vdd_class *disp_cc_mx_sun_regulators[] = {
+	&vdd_mxa,
 };
 
 static struct clk_crm disp_crm = {
@@ -194,7 +199,7 @@ static struct clk_alpha_pll disp_cc_pll2 = {
 			.ops = &clk_alpha_pll_pongo_elu_ops,
 		},
 		.vdd_data = {
-			.vdd_class = &vdd_mx,
+			.vdd_class = &vdd_mxa,
 			.num_rate_max = VDD_NUM,
 			.rate_max = (unsigned long[VDD_NUM]) {
 				[VDD_LOWER_D1] = 38400000},
@@ -1053,7 +1058,7 @@ static struct clk_rcg2 disp_cc_osc_clk_src = {
 		.ops = &clk_rcg2_ops,
 	},
 	.clkr.vdd_data = {
-		.vdd_class = &vdd_mx,
+		.vdd_class = &vdd_mxa,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
 			[VDD_LOWER_D1] = 38400000},
@@ -2185,6 +2190,8 @@ static struct qcom_cc_desc disp_cc_sun_desc = {
 static struct qcom_cc_desc disp_cc_mx_sun_desc = {
 	.clks = disp_cc_mx_sun_clocks,
 	.num_clks = ARRAY_SIZE(disp_cc_mx_sun_clocks),
+	.clk_regulators = disp_cc_mx_sun_regulators,
+	.num_clk_regulators = ARRAY_SIZE(disp_cc_mx_sun_regulators),
 };
 
 static const struct of_device_id disp_cc_sun_match_table[] = {

@@ -75,6 +75,9 @@ struct gdsc {
 
 	const char 			*supply;
 	struct regulator		*rsupply;
+
+	bool				sw_override_support;
+
 };
 
 struct gdsc_desc {

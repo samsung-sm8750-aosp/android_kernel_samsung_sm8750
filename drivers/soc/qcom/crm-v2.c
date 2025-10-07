@@ -924,7 +924,7 @@ exit:
 	if (ret) {
 		_crm_dump_drv_regs(drv, crm);
 		_crm_dump_regs(crm);
-		BUG_ON(1);
+		WARN_ON(1);
 	}
 
 	return ret;
@@ -1173,7 +1173,7 @@ static int crm_send_cmd(struct crm_drv_top *crm, struct crm_drv *drv,
 		if (!time_left) {
 			_crm_dump_drv_regs(drv, crm);
 			_crm_dump_regs(crm);
-			BUG_ON(1);
+			WARN_ON(1);
 			return -ETIMEDOUT;
 		}
 		/* Unblock new requests for same VCD */

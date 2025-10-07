@@ -87,7 +87,7 @@ ost_t_policy_entity_store(struct config_item *item, const char *page,
 	char str[10] = "";
 
 	mutex_lock(mutexp);
-	if (sscanf(page, "%s", str) != 1) {
+	if (sscanf(page, "%9s", str) != 1) {
 		mutex_unlock(mutexp);
 		return -EINVAL;
 	}

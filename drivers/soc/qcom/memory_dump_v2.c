@@ -186,7 +186,7 @@ static int reset_sprs_dump_table(struct device *dev)
  *
  * Returns 0 on success, or -ENOMEM on error of no enough memory.
  */
-static int update_reg_dump_table(struct device *dev, u32 core_reg_num)
+static inline int __update_reg_dump_table(struct device *dev, u32 core_reg_num)
 {
 	int ret = 0;
 	u32 system_regs_input_index = SYSTEM_REGS_INPUT_INDEX +
@@ -224,6 +224,30 @@ static int update_reg_dump_table(struct device *dev, u32 core_reg_num)
 err:
 	mutex_unlock(&cpudata->mutex);
 	return ret;
+}
+
+static inline u32 __core_reg_num_max(const struct cpuss_dump_data *cpudata)
+{
+	const u32 size = cpudata->cpussregdata->size;
+	u32 system_regs_input_index_max;
+
+	if (size == 0)
+		return 0;
+
+	system_regs_input_index_max = (size - 1) / sizeof(uint32_t) - 1;
+
+	return (system_regs_input_index_max - SYSTEM_REGS_INPUT_INDEX) / 2;
+}
+
+static int update_reg_dump_table(struct device *dev, u32 core_reg_num)
+{
+	struct cpuss_dump_data *cpudata = dev_get_drvdata(dev);
+	const u32 core_reg_num_max = __core_reg_num_max(cpudata);
+
+	if (core_reg_num > core_reg_num_max)
+		return -ENOMEM;
+
+	return __update_reg_dump_table(dev, core_reg_num);
 }
 
 static ssize_t core_reg_num_show(struct device *dev,
@@ -1054,6 +1078,8 @@ static int cpuss_dump_init(struct device *dev,
 	return initialized;
 }
 
+static bool test_sec_eneable_any_debug_level(const struct device_node *memdump_node, const struct device_node *child_node);
+
 #define MSM_DUMP_DATA_SIZE sizeof(struct msm_dump_data)
 static void mem_dump_parse_register_entry(struct memdump_info *dump_info)
 {
@@ -1067,6 +1093,9 @@ static void mem_dump_parse_register_entry(struct memdump_info *dump_info)
 	int initialized;
 
 	for_each_available_child_of_node(dump_info->dev_node, child_node) {
+		if (!test_sec_eneable_any_debug_level(dump_info->dev_node, child_node))
+			continue;
+
 		ret = of_property_read_u32(child_node, "qcom,dump-size", &size);
 		if (ret) {
 			dev_err(dump_info->dev, "Unable to find size for %s\n",
@@ -1116,6 +1145,9 @@ static size_t mem_dump_calc_dump_total_size(const struct device_node *node)
 
 	ret = total_size = size = no_of_nodes = 0;
 	for_each_available_child_of_node(node, child_node) {
+		if (!test_sec_eneable_any_debug_level(node, child_node))
+			continue;
+
 		ret = of_property_read_u32(child_node, "qcom,dump-size", &size);
 		if (ret)
 			continue;
@@ -1388,6 +1420,9 @@ static int dynamic_mem_dump_alloc(struct platform_device *pdev, struct device_no
 	used_size = *rmem_offset;
 
 	for_each_available_child_of_node(node, child_node) {
+		if (!test_sec_eneable_any_debug_level(node, child_node))
+			continue;
+
 		total_size = mem_dump_calc_dump_total_size(child_node);
 		if (!total_size)
 			continue;
@@ -1408,6 +1443,9 @@ static int dynamic_mem_dump_alloc(struct platform_device *pdev, struct device_no
 			return -ENOMEM;
 		}
 		list_add(&dump_info->link, &dynamic_dump_list);
+
+		if (of_property_read_bool(child_node, "sec,eneable-dynamic_by_default"))
+			dynamic_mem_dump_enable(dump_info);
 	}
 
 	*rmem_offset = used_size;
@@ -1634,3 +1672,47 @@ module_platform_driver(mem_dump_driver);
 
 MODULE_DESCRIPTION("Memory Dump V2 Driver");
 MODULE_LICENSE("GPL");
+
+#if IS_ENABLED(CONFIG_SEC_QC_SUMMARY)
+#include <linux/samsung/debug/qcom/sec_qc_summary.h>
+
+void sec_qc_summary_set_msm_memdump_info(struct sec_qc_summary_data_apss *apss)
+{
+	apss->msm_memdump_paddr = (uint64_t)memdump.table_phys;
+	pr_info("%s : 0x%llx\n", __func__, apss->msm_memdump_paddr);
+}
+EXPORT_SYMBOL(sec_qc_summary_set_msm_memdump_info);
+#endif
+
+#if IS_ENABLED(CONFIG_SEC_QC_DEBUG)
+#include <linux/samsung/debug/sec_debug.h>
+#include <linux/samsung/sec_of.h>
+
+static __always_inline bool __test_sec_debug_level(const struct device_node *node)
+{
+	unsigned int sec_dbg_level = sec_debug_level();
+	int err;
+
+	err = sec_of_test_debug_level(node, "sec,debug_level", sec_dbg_level);
+	if (err == -EINVAL)
+		return false;
+
+	return true;
+}
+
+static bool test_sec_eneable_any_debug_level(const struct device_node *memdump_node,
+		const struct device_node *child_node)
+{
+	if (__test_sec_debug_level(memdump_node))
+		return true;
+
+	if (of_property_read_bool(child_node, "sec,eneable-any_debug_level"))
+		return true;
+
+	pr_debug("memory_dump_v2: Skip for current debug level - %s\n", child_node->name);
+
+	return false;
+}
+#else
+static bool __used test_sec_eneable_any_debug_level(const struct device_node *memdump_node, const struct device_node *child_node) { return true; }
+#endif

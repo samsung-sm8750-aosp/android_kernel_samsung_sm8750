@@ -88,9 +88,11 @@ static int try_to_freeze_tasks(bool user_only)
 	elapsed_msecs = ktime_to_ms(elapsed);
 
 	if (wakeup) {
+		pr_info("\n");
 		pr_err("Freezing %s aborted after %d.%03d seconds\n", what,
 		       elapsed_msecs / 1000, elapsed_msecs % 1000);
 	} else if (todo) {
+		pr_info("\n");
 		pr_err("Freezing %s failed after %d.%03d seconds "
 		       "(%d tasks refusing to freeze, wq_busy=%d):\n", what,
 		       elapsed_msecs / 1000, elapsed_msecs % 1000,
@@ -130,9 +132,11 @@ int freeze_processes(void)
 {
 	int error;
 
+	pr_info("Disabling usermodehelper ... ");
 	error = __usermodehelper_disable(UMH_FREEZING);
 	if (error)
 		return error;
+	pr_info("done.\n");
 
 	/* Make sure this task doesn't get frozen */
 	current->flags |= PF_SUSPEND_TASK;

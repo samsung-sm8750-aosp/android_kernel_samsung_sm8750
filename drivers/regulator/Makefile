@@ -88,6 +88,7 @@ obj-$(CONFIG_REGULATOR_MAX20411) += max20411-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77686) += max77686-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77693) += max77693-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77802) += max77802-regulator.o
+obj-$(CONFIG_REGULATOR_MAX77816) += max77816.o
 obj-$(CONFIG_REGULATOR_MAX77826) += max77826-regulator.o
 obj-$(CONFIG_REGULATOR_MAX77857) += max77857-regulator.o
 obj-$(CONFIG_REGULATOR_MC13783) += mc13783-regulator.o
@@ -208,3 +209,5 @@ obj-$(CONFIG_REGULATOR_DEBUG_CONTROL) += debug-regulator.o
 obj-$(CONFIG_REGULATOR_QTI_OCP_NOTIFIER) += qti-ocp-notifier.o
 
 ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
+
+obj-$(CONFIG_REGULATOR_TPS62864) += tps62864-regulator.o

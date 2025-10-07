@@ -3036,6 +3036,17 @@ static void cam_cc_sun_sync_state(struct device *dev)
 	qcom_cc_sync_state(dev, &cam_cc_sun_desc);
 }
 
+void log_cam_cc_pll_registers(void)
+{
+	pr_err("Dumping cam_cc_pll3 registers\n");
+	cam_cc_pll3.clkr.ops->list_registers(NULL, &cam_cc_pll3.clkr.hw);
+	pr_err("Dumping cam_cc_pll4 registers\n");
+	cam_cc_pll4.clkr.ops->list_registers(NULL, &cam_cc_pll4.clkr.hw);
+	pr_err("Dumping cam_cc_pll5 registers\n");
+	cam_cc_pll5.clkr.ops->list_registers(NULL, &cam_cc_pll5.clkr.hw);
+}
+EXPORT_SYMBOL(log_cam_cc_pll_registers);
+
 static const struct dev_pm_ops cam_cc_sun_pm_ops = {
 	SET_RUNTIME_PM_OPS(qcom_cc_runtime_suspend, qcom_cc_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,

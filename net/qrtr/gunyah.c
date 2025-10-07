@@ -166,6 +166,12 @@ static void gunyah_rx_peak(struct gunyah_pipe *pipe, void *data,
 	if (WARN_ON_ONCE(tail > pipe->length))
 		return;
 
+	/* Update the tail pointer and add a memory barrier to ensure
+	 * consistent read/write between the VM and the remote.
+	 * This prevents the VM from reading stale data from the FIFO.
+	 */
+	mb();
+
 	len = min_t(size_t, count, pipe->length - tail);
 	if (len)
 		memcpy_fromio(data, pipe->fifo + tail, len);
@@ -442,6 +448,11 @@ static void qrtr_gunyah_read_frag(struct qrtr_gunyah_dev *qdev)
 static void qrtr_gunyah_read(struct qrtr_gunyah_dev *qdev)
 {
 	unsigned long flags;
+
+	if (!qdev) {
+		pr_err("%s: Invalid data.\n", __func__);
+		return;
+	}
 
 	spin_lock_irqsave(&qdev->dbl_lock, flags);
 	wake_up_all(&qdev->tx_avail_notify);

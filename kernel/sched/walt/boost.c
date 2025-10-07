@@ -66,6 +66,22 @@ void walt_init_foreground_tg(struct task_group *tg)
 	wtg->sched_boost_enable[BALANCE_BOOST] = true;
 }
 
+void walt_init_foregroundboost_tg(struct task_group *tg)
+{
+	struct walt_task_group *wtg;
+
+	wtg = (struct walt_task_group *) tg->android_vendor_data1;
+
+	wtg->colocate = false;
+	wtg->sched_boost_enable[NO_BOOST] = false;
+	wtg->sched_boost_enable[FULL_THROTTLE_BOOST] = true;
+	wtg->sched_boost_enable[CONSERVATIVE_BOOST] =
+		soc_feat(SOC_ENABLE_CONSERVATIVE_BOOST_FG_BIT);
+	wtg->sched_boost_enable[RESTRAINED_BOOST] = false;
+	wtg->sched_boost_enable[STORAGE_BOOST] = true;
+	wtg->sched_boost_enable[BALANCE_BOOST] = true;
+}
+
 /*
  * Scheduler boost type and boost policy might at first seem unrelated,
  * however, there exists a connection between them that will allow us
@@ -150,6 +166,7 @@ static void sched_balance_boost_exit(void)
 {
 	core_ctl_set_boost(false);
 }
+
 
 struct sched_boost_data {
 	int	refcount;

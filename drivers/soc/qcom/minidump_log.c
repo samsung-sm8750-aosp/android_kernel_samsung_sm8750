@@ -29,6 +29,9 @@
 #include <linux/vmalloc.h>
 #include <linux/panic_notifier.h>
 #include "debug_symbol.h"
+
+#include <linux/samsung/debug/sec_debug.h>
+
 #ifdef CONFIG_QCOM_MINIDUMP_PSTORE
 #include <linux/math64.h>
 #include <linux/of.h>
@@ -1505,7 +1508,10 @@ static void register_pstore_info(void)
 }
 #endif
 
-int msm_minidump_log_init(void)
+/* NOTE: 'msm_minidump_log_init' is changed to the inlined function
+ * to check ss's debug levels.
+ */
+static inline int __msm_minidump_log_init(void)
 {
 	register_kernel_sections();
 	is_vmap_stack = IS_ENABLED(CONFIG_VMAP_STACK);
@@ -1530,4 +1536,12 @@ int msm_minidump_log_init(void)
 #endif
 #endif
 	return 0;
+}
+
+int msm_minidump_log_init(void)
+{
+	if (!sec_debug_is_enabled())
+		return 0;
+
+	return __msm_minidump_log_init();
 }

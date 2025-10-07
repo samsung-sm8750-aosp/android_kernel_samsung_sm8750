@@ -952,6 +952,7 @@ static inline int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 static inline pte_t __ptep_get_and_clear(struct mm_struct *mm,
 				       unsigned long address, pte_t *ptep)
 {
+	READ_ONCE(*ptep);
 	pte_t pte = __pte(xchg_relaxed(&pte_val(*ptep), 0));
 
 	page_table_check_pte_clear(mm, pte);

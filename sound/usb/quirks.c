@@ -2308,6 +2308,12 @@ static const struct usb_audio_quirk_flags_table quirk_flags_table[] = {
 		   QUIRK_FLAG_DSD_RAW),
 	VENDOR_FLG(0xc502, /* HiBy devices */
 		   QUIRK_FLAG_DSD_RAW),
+#if defined(CONFIG_USB_HOST_SAMSUNG_FEATURE)
+	VENDOR_FLG(0x04e8, /* Samsung */
+		   QUIRK_FLAG_CTL_MSG_DELAY_1M),
+	VENDOR_FLG(0x2fc6, /* Comtrue */
+		   QUIRK_FLAG_CTL_MSG_DELAY_1M),
+#endif
 
 	{} /* terminator */
 };

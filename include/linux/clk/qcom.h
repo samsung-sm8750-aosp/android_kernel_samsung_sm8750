@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved
  */
 
 #ifndef __LINUX_CLK_QCOM_H_
@@ -24,6 +24,7 @@ int qcom_clk_get_voltage(struct clk *clk, unsigned long rate);
 int qcom_clk_set_flags(struct clk *clk, unsigned long flags);
 void qcom_clk_dump(struct clk *clk, struct regulator *regulator,
 		   bool calltrace);
+void qcom_gdsc_pd_dump(struct device *dev);
 void qcom_clk_bulk_dump(int num_clks, struct clk_bulk_data *clks,
 			struct regulator *regulator, bool calltrace);
 int qcom_clk_crm_set_rate(struct clk *clk,
@@ -32,4 +33,5 @@ int qcom_clk_crm_set_rate(struct clk *clk,
 int qcom_clk_crmb_set_rate(struct clk *clk,
 			   enum crm_drv_type client_type, u32 client_idx,
 			   u32 nd_idx, u32 pwr_st, u32 ab_rate, u32 ib_rate);
+void log_cam_cc_pll_registers(void);
 #endif  /* __LINUX_CLK_QCOM_H_ */

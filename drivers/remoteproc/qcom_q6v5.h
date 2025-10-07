@@ -47,9 +47,17 @@ struct qcom_q6v5 {
 	bool running;
 
 	const char *load_state;
+	atomic_t ssr_in_prog;
+	spinlock_t silent_ssr_lock;
 	void (*handover)(struct qcom_q6v5 *q6v5);
 	unsigned long long seq;
 	unsigned long long crash_seq;
+#if IS_ENABLED(CONFIG_SEC_SENSORS_SSC)
+	bool prev_recovery_disabled;
+	bool fssr;
+	bool fssr_dump;
+	bool fssr_ignore;
+#endif	
 };
 
 static inline void qcom_q6v5_pas_set_bw(struct qcom_q6v5 *q6v5, u32 avg_bw, u32 peak_bw)

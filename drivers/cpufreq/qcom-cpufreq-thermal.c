@@ -9,6 +9,11 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#if IS_ENABLED(CONFIG_SEC_PM_LOG)
+#include <linux/sec_pm_log.h>
+#endif
+
+#include <trace/events/power.h>
 
 struct qcom_cpufreq_thermal_domain {
 	struct mbox_client cl;
@@ -17,6 +22,14 @@ struct qcom_cpufreq_thermal_domain {
 
 	struct device_attribute freq_limit_attr;
 	unsigned long freq_limit;
+#if IS_ENABLED(CONFIG_SEC_PM_LOG)
+	unsigned long lowest_freq;
+	bool limiting;
+
+	ktime_t start_time;
+	ktime_t limited_time;
+	unsigned long accu_time;
+#endif
 };
 
 struct qcom_cpufreq_thermal {
@@ -37,12 +50,38 @@ static void qcom_cpufreq_thermal_rx(struct mbox_client *cl, void *msg)
 	struct qcom_cpufreq_thermal_domain *domain = to_qcom_cpufreq_thermal_domain(cl);
 	unsigned int cpu = cpumask_first(domain->policy->related_cpus);
 	unsigned long throttled_freq = *((unsigned long *)msg);
+	char lmh_debug[8] = {0};
 
 	dev_dbg(cl->dev, "cpu%u thermal limit: %lu\n", cpu, throttled_freq);
 
 	domain->freq_limit = throttled_freq;
 
+#if IS_ENABLED(CONFIG_SEC_PM_LOG)
+	if (domain->limiting == false) {
+		ss_dcvsh_print("Start lmh cpu%d @%lu\n", cpu, (throttled_freq / 1000));
+		domain->lowest_freq = throttled_freq;
+		domain->limiting = true;
+		domain->start_time = ktime_get();
+	} else if (domain->limiting == true) {
+		if (throttled_freq >= domain->policy->cpuinfo.max_freq) {
+			domain->limiting = false;
+			domain->limited_time = (ktime_get() - domain->start_time);
+			domain->accu_time += ktime_to_ms(domain->limited_time);
+			ss_dcvsh_print("Fin. lmh cpu%d, lowest %lu, f_lim %lu, dcvsh %lu, accu %d\n",
+				cpu, (domain->lowest_freq / 1000), (throttled_freq / 1000),
+				(domain->policy->cur / 1000), domain->accu_time);
+			domain->lowest_freq = UINT_MAX;
+		} else {
+			if (throttled_freq < domain->lowest_freq)
+				domain->lowest_freq = throttled_freq;
+		}
+	}
+#endif
+
 	arch_update_thermal_pressure(domain->policy->related_cpus, throttled_freq);
+
+	snprintf(lmh_debug, sizeof(lmh_debug), "lmh_%d", cpu);
+	trace_clock_set_rate(lmh_debug, throttled_freq, raw_smp_processor_id());
 }
 
 static ssize_t dcvsh_freq_limit_show(struct device *dev,

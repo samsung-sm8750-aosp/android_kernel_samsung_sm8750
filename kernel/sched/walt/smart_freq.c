@@ -6,6 +6,7 @@
 #include <linux/tick.h>
 #include "walt.h"
 #include "trace.h"
+#include <trace/events/power.h>
 
 bool smart_freq_init_done;
 char reason_dump[1024];
@@ -322,6 +323,8 @@ static void smart_freq_update_one_cluster(struct walt_sched_cluster *cluster,
 	int max_reason, i;
 	unsigned long old_freq_cap = freq_cap[SMART_FREQ][cluster->id];
 	struct rq *rq;
+	char smart_freq[25] = {0};
+	char smart_freq_reason[25] = {0};
 
 	for (i = 0; i < LEGACY_SMART_FREQ; i++) {
 		current_reason = current_reasons & BIT(i);
@@ -330,6 +333,12 @@ static void smart_freq_update_one_cluster(struct walt_sched_cluster *cluster,
 		if (current_reason) {
 			smart_freq_info->legacy_reason_status[i].deactivate_ns = 0;
 			smart_freq_info->cluster_active_reason |= BIT(i);
+
+			if (i == TRAILBLAZER_SMART_FREQ)
+				trail_active = true;
+			else if (i == SUSTAINED_HIGH_UTIL_SMART_FREQ)
+				sustain_active = true;
+
 		} else if (cluster_active_reason) {
 			if (!smart_freq_info->legacy_reason_status[i].deactivate_ns)
 				smart_freq_info->legacy_reason_status[i].deactivate_ns = wallclock;
@@ -349,6 +358,12 @@ static void smart_freq_update_one_cluster(struct walt_sched_cluster *cluster,
 				if (delta >= smart_freq_info->legacy_reason_config[i].hyst_ns) {
 					smart_freq_info->legacy_reason_status[i].deactivate_ns = 0;
 					smart_freq_info->cluster_active_reason &= ~BIT(i);
+
+					if (i == TRAILBLAZER_SMART_FREQ)
+						trail_active = false;
+					else if (i == SUSTAINED_HIGH_UTIL_SMART_FREQ)
+						sustain_active = false;
+
 					continue;
 				}
 			}
@@ -357,6 +372,14 @@ static void smart_freq_update_one_cluster(struct walt_sched_cluster *cluster,
 				max_reason = i;
 			}
 		}
+	}
+
+	if (enable_logging) {
+		snprintf(smart_freq, sizeof(smart_freq), "smart_fmax_%d", cluster->id);
+		trace_clock_set_rate(smart_freq, max_cap, raw_smp_processor_id());
+
+		snprintf(smart_freq_reason, sizeof(smart_freq_reason), "legacy_reason_%d", cluster->id);
+		trace_clock_set_rate(smart_freq_reason, max_reason, raw_smp_processor_id());
 	}
 
 	trace_sched_freq_uncap(cluster->id, nr_big, wakeup_ctr_sum, current_reasons,

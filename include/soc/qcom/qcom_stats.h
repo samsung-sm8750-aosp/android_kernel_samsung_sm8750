@@ -66,6 +66,33 @@ void subsystem_sleep_debug_enable(bool enable);
 int cx_stats_get_ss_vote_info(int ss_count,
 			       struct qcom_stats_cx_vote_info *vote_info);
 
+#if IS_ENABLED(CONFIG_SEC_PM)
+#define SOC_STATS_COUNT 3
+#define SUBSYSTEM_STATS_COUNT 5
+#define MAX_NAME_LEN 16
+
+struct sleep_stats_info {
+	char name[MAX_NAME_LEN];
+	u32 count;
+	unsigned int duration_sec;
+	unsigned int duration_msec;
+};
+
+struct qcom_stats_info {
+	struct sleep_stats_info soc_info[SOC_STATS_COUNT];
+	struct sleep_stats_info subsystem_info[SUBSYSTEM_STATS_COUNT];
+};
+
+struct boot_time_info {
+	ktime_t start;
+	ktime_t end;
+	ktime_t elapsed;
+	unsigned int elapsed_msecs;
+};
+
+void init_fail_stats(void);
+struct qcom_stats_info* get_fail_stats(void);
+#endif
 #else
 
 static inline int ddr_stats_get_ss_count(void)

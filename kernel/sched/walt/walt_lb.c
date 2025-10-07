@@ -242,6 +242,9 @@ static inline bool _walt_can_migrate_task(struct task_struct *p, int dst_cpu,
 	if (wrq->push_task == p)
 		return false;
 
+	if (is_storage_boost() && wts->iowaited && sched_ioirq_cpu(dst_cpu))
+		return false;
+
 	if (pipeline_in_progress() && walt_pipeline_low_latency_task(p))
 		return false;
 

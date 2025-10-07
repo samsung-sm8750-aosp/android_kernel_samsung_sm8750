@@ -1,4 +1,5 @@
 [abi_symbol_list]
+  android_create_function_device
   blkcg_activate_policy
   blkcg_deactivate_policy
   blkcg_root
@@ -40,6 +41,11 @@
   gserial_resume
   gserial_suspend
   gs_free_req
+  i2c_smbus_read_byte_data
+  i2c_smbus_read_i2c_block_data
+  i2c_smbus_read_word_data
+  i2c_smbus_write_byte_data
+  i2c_smbus_write_i2c_block_data
   kick_all_cpus_sync
   mas_walk
   mas_prev
@@ -54,6 +60,7 @@
   proc_set_size
   pstore_register
   pstore_unregister
+  regulator_set_voltage_time_sel
   rfkill_find_type
   rfkill_get_led_trigger_name
   rfkill_pause_polling

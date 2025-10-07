@@ -149,7 +149,8 @@ struct sysmon_smem_hmx_stats {
 	u32 Last_update_time_load_msb;
 };
 
-static struct sysmon_smem_stats g_sysmon_stats;
+struct sysmon_smem_stats g_sysmon_stats;
+EXPORT_SYMBOL_GPL(g_sysmon_stats);
 
 /* Adds delta between SMEM powerstats updated time to current time */
 static int add_delta_time(
@@ -1391,6 +1392,107 @@ static int master_cdsp_stats_show(struct seq_file *s, void *d)
 }
 
 DEFINE_SHOW_ATTRIBUTE(master_cdsp_stats);
+
+void show_cdsp_clock(char *buf, int len) {
+	struct sysmon_smem_q6_event_stats_extended *events_ptr = NULL;
+	int ver = 0;
+
+	if (!g_sysmon_stats.smem_init_cdsp)
+		sysmon_smem_init_cdsp();
+
+	if (g_sysmon_stats.sysmon_event_stats_cdsp) {
+		events_ptr = g_sysmon_stats.sysmon_event_stats_cdsp;
+		ver = events_ptr->featureId_q6Event & 0xFFFF;
+
+		if ((ver > 1) && (events_ptr->event_stats_ext.HMX_Power_state >= 1)) {
+			scnprintf(buf, len, "%d / %s / %d",
+					events_ptr->event_stats.QDSP6_clk,
+					events_ptr->event_stats_ext.HMX_Power_state ? "ON" : "OFF",
+					events_ptr->event_stats_ext.HMX_clk);
+		} else {
+			scnprintf(buf, len, "%d", events_ptr->event_stats.QDSP6_clk);
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(show_cdsp_clock);
+
+char *strcat(char *dest, const char *src)
+{
+	char *tmp = dest;
+
+	while (*dest)
+		dest++;
+	while ((*dest++ = *src++) != '\0')
+		;
+	return tmp;
+}
+
+void show_cdsp_table(char *buf) {
+	struct sysmon_smem_power_stats_extended sysmon_power_stats = { 0 };
+	char tmp[10] = {0, };
+	int j = 0;
+
+	if (!g_sysmon_stats.smem_init_cdsp)
+		sysmon_smem_init_cdsp();
+
+	if (g_sysmon_stats.sysmon_event_stats_cdsp) {
+		memcpy(&sysmon_power_stats, g_sysmon_stats.sysmon_power_stats_cdsp,
+				sizeof(struct sysmon_smem_power_stats_extended));
+
+		for (j = SYSMON_POWER_STATS_MAX_CLK_LEVELS - 1; j >= 0; j--) {
+			if (sysmon_power_stats.powerstats.clk_arr[j]) {
+				memset(&tmp, 0x0, sizeof(tmp));
+				scnprintf(tmp, sizeof(tmp), "%u\n", sysmon_power_stats.powerstats.clk_arr[j]);
+				strcat(buf, tmp);
+			}
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(show_cdsp_table);
+
+void show_time_in_state(char *buf) {
+	struct sysmon_smem_power_stats_extended sysmon_power_stats = { 0 };
+	struct sysmon_smem_power_stats_extended *ptr = NULL;
+	u64 lpm_accumulated = 0;
+	int ret = 0;
+	int ver = 0;
+	char tmp[100] = {0, };
+	int j = 0;
+
+	if (!g_sysmon_stats.smem_init_cdsp)
+		sysmon_smem_init_cdsp();
+
+	if (g_sysmon_stats.sleep_stats_cdsp) {
+		lpm_accumulated = g_sysmon_stats.sleep_stats_cdsp->accumulated;
+
+		if (g_sysmon_stats.sleep_stats_cdsp->last_entered_at >
+					g_sysmon_stats.sleep_stats_cdsp->last_exited_at)
+			lpm_accumulated += arch_timer_read_counter() -
+						g_sysmon_stats.sleep_stats_cdsp->last_entered_at;
+	}
+
+	if (g_sysmon_stats.sysmon_power_stats_cdsp) {
+		memcpy(&sysmon_power_stats, g_sysmon_stats.sysmon_power_stats_cdsp,
+				sizeof(struct sysmon_smem_power_stats_extended));
+		ptr = g_sysmon_stats.sysmon_power_stats_cdsp;
+		ver = (ptr->powerstats.version) & 0xFF;
+		ret = add_delta_time(ver, 0, lpm_accumulated, &sysmon_power_stats);
+
+		if (ret)
+			pr_err("\nWarning: Power Stats might be Invalid\n");
+
+		for (j = 0; j < SYSMON_POWER_STATS_MAX_CLK_LEVELS; j++) {
+			if (sysmon_power_stats.powerstats.clk_arr[j]) {
+				memset(&tmp, 0x0, sizeof(tmp));
+				scnprintf(tmp, sizeof(tmp), "%u %u\n",
+					sysmon_power_stats.powerstats.clk_arr[j],
+					sysmon_power_stats.powerstats.active_time[j] * 1000);
+				strcat(buf, tmp);
+			}
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(show_time_in_state);
 
 static int  __init sysmon_stats_init(void)
 {

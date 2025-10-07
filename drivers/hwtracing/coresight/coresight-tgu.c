@@ -232,15 +232,17 @@ static ssize_t set_group_store(struct device *dev, struct device_attribute
 	int grp, reg, step;
 	unsigned long value;
 
-	if (drvdata->grp_refcnt >= MAX_GROUP_SETS) {
-		dev_err(drvdata->dev, " Too many groups are being configured\n");
-		return -EINVAL;
-	}
-
 	if (sscanf(buf, "%d %d %d %lx", &grp, &reg, &step, &value) != 4)
 		return -EINVAL;
 
 	spin_lock(&drvdata->spinlock);
+
+	if (drvdata->grp_refcnt >= MAX_GROUP_SETS) {
+		dev_err(drvdata->dev, " Too many groups are being configured\n");
+		spin_unlock(&drvdata->spinlock);
+		return -EINVAL;
+	}
+
 	if ((grp <= MAX_GROUPS) && (reg <= drvdata->max_regs)) {
 		drvdata->grp_data[drvdata->grp_refcnt].grpaddr =
 						GROUP_REG_STEP(grp, reg, step);

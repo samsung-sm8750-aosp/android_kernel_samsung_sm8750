@@ -23,6 +23,21 @@
 #include "string-stream.h"
 #include "try-catch-impl.h"
 
+#if IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT)
+struct test_global_context {
+	struct list_head initcalls;
+};
+
+static struct test_global_context test_global_context = {
+	.initcalls = LIST_HEAD_INIT(test_global_context.initcalls),
+};
+
+void test_install_initcall(struct test_initcall *initcall)
+{
+	list_add_tail(&initcall->node, &test_global_context.initcalls);
+}
+#endif /* IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT) */
+
 /*
  * Hook to fail the current test and print an error message to the log.
  */
@@ -364,6 +379,9 @@ void kunit_init_test(struct kunit *test, const char *name, char *log)
 {
 	spin_lock_init(&test->lock);
 	INIT_LIST_HEAD(&test->resources);
+#if IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT)
+	INIT_LIST_HEAD(&test->post_conditions);
+#endif /* IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT) */
 	test->name = name;
 	test->log = log;
 	if (test->log)
@@ -412,6 +430,20 @@ static void kunit_run_case_internal(struct kunit *test,
 {
 	struct timespec64 start, end;
 
+#if IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT)
+	struct test_initcall *initcall;
+	int ret;
+
+	list_for_each_entry(initcall, &test_global_context.initcalls, node) {
+		ret = initcall->init(initcall, test);
+		if (ret) {
+			kunit_err(test, "failed to initialize: %d", ret);
+			kunit_set_failure(test);
+			return;
+		}
+	}
+#endif /* IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT) */
+
 	if (suite->init) {
 		int ret;
 
@@ -434,6 +466,13 @@ static void kunit_run_case_internal(struct kunit *test,
 
 static void kunit_case_internal_cleanup(struct kunit *test)
 {
+#if IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT)
+	struct test_initcall *initcall;
+
+	list_for_each_entry(initcall, &test_global_context.initcalls, node) {
+		initcall->exit(initcall);
+	}
+#endif /* IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT) */
 	kunit_cleanup(test);
 }
 
@@ -444,6 +483,18 @@ static void kunit_case_internal_cleanup(struct kunit *test)
 static void kunit_run_case_cleanup(struct kunit *test,
 				   struct kunit_suite *suite)
 {
+#if IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT)
+	struct kunit_post_condition *condition, *condition_safe;
+
+	list_for_each_entry_safe(condition,
+				 condition_safe,
+				 &test->post_conditions,
+				 node) {
+		condition->validate(condition);
+		list_del(&condition->node);
+	}
+#endif /* IS_BUILTIN(CONFIG_KUNIT) && IS_ENABLED(CONFIG_SEC_KUNIT) */
+
 	if (suite->exit)
 		suite->exit(test);
 

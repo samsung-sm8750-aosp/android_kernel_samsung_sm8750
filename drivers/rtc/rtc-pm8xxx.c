@@ -632,6 +632,16 @@ static int pm8xxx_rtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_RTC_AUTO_PWRON)
+static struct rtc_wkalrm pwron_alarm;
+
+void pmic_rtc_setalarm(struct rtc_wkalrm *alm)
+{
+	memcpy(&pwron_alarm, alm, sizeof(struct rtc_wkalrm));
+}
+EXPORT_SYMBOL(pmic_rtc_setalarm);
+#endif
+
 static void pm8xxx_remove(struct platform_device *pdev)
 {
 	dev_pm_clear_wake_irq(&pdev->dev);
@@ -640,6 +650,22 @@ static void pm8xxx_remove(struct platform_device *pdev)
 static void pm8xxx_rtc_shutdown(struct platform_device *pdev)
 {
 	struct pm8xxx_rtc *rtc_dd = platform_get_drvdata(pdev);
+
+#if IS_ENABLED(CONFIG_RTC_AUTO_PWRON)
+	struct rtc_wkalrm alarm;
+	int rtc_alarm_status = 0;
+
+	if (pdev) {
+		pm8xxx_rtc_set_alarm(&pdev->dev, &pwron_alarm);
+		rtc_alarm_status = pm8xxx_rtc_read_alarm(&pdev->dev, &alarm);
+		if (!rtc_alarm_status) {
+			pr_info("%s: %d-%02d-%02d %02d:%02d:%02d\n", __func__,
+				alarm.time.tm_year + 1900, alarm.time.tm_mon + 1, alarm.time.tm_mday,
+				alarm.time.tm_hour, alarm.time.tm_min, alarm.time.tm_sec);
+		}
+	} else
+		pr_err("%s: spmi device not found\n", __func__);
+#endif
 
 	devm_free_irq(rtc_dd->dev, rtc_dd->alarm_irq, rtc_dd);
 }

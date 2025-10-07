@@ -17,6 +17,13 @@
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
 #include <linux/regmap.h>
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+#include <linux/mfd/sec_ap_pmic.h>
+
+#define PON_PBS_KPDPWR_S2_CNTL2 0x43
+#define PON_PBS_KPDPWR_RESIN_S2_CNTL2 0x4B
+#define PON_PBS_S2_CNTL_EN BIT(7)
+#endif
 
 #define PON_REV2			0x01
 
@@ -81,7 +88,75 @@ struct pm8941_pwrkey {
 	ktime_t sw_debounce_end_time;
 	bool last_status;
 	const struct pm8941_data *data;
+
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+	int wake_enabled;
+#endif
 };
+
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+static struct _sec_pon {
+	struct pm8941_pwrkey *key_dev[SEC_PON_KEY_CNT];
+	struct pm8941_pwrkey *reset_dev;
+} sec_pon;
+
+int sec_get_s2_reset(enum sec_pon_type type)
+{
+	int ret;
+	unsigned int en;
+	struct pm8941_pwrkey *pwrkey = sec_pon.reset_dev;
+	unsigned int offset;
+
+	if (type != SEC_PON_KPDPWR && type != SEC_PON_KPDPWR_RESIN)
+		return -EINVAL;
+	if (!pwrkey)
+		return -ENXIO;
+
+	offset = (type == SEC_PON_KPDPWR) ?
+				PON_PBS_KPDPWR_S2_CNTL2 : PON_PBS_KPDPWR_RESIN_S2_CNTL2;
+
+	ret = regmap_read(pwrkey->regmap,
+				pwrkey->pon_pbs_baseaddr + offset, &en);
+	if (ret) {
+		pr_err("Unable to get S2 reset on/off for type %d\n", type);
+		return ret;
+	}
+
+	ret  = (en & PON_PBS_S2_CNTL_EN) ? true : false;
+	return ret;
+}
+EXPORT_SYMBOL_GPL(sec_get_s2_reset);
+
+int sec_set_pm_key_wk_init(enum sec_pon_type type, int en)
+{
+	struct pm8941_pwrkey *pwrkey;
+
+	if (type != SEC_PON_KPDPWR && type != SEC_PON_RESIN)
+		return -EINVAL;
+
+	pwrkey = sec_pon.key_dev[type];
+	if (!pwrkey)
+		return -ENXIO;
+
+	if (pwrkey->wake_enabled != en) {
+		pwrkey->wake_enabled = en;
+		pr_info("%s: wk_int (type:%d, en:%d)\n", __func__, type, en);
+	} else {
+		pr_info("%s: already wk_int (type:%d, en:%d)\n", __func__, type, en);
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sec_set_pm_key_wk_init);
+
+int sec_get_pm_key_wk_init(enum sec_pon_type type)
+{
+	if (type != SEC_PON_KPDPWR && type != SEC_PON_RESIN)
+		return -EINVAL;
+
+	return sec_pon.key_dev[type]->wake_enabled;
+}
+EXPORT_SYMBOL_GPL(sec_get_pm_key_wk_init);
+#endif
 
 static int pm8941_reboot_notify(struct notifier_block *nb,
 				unsigned long code, void *unused)
@@ -223,8 +298,15 @@ static int pm8941_pwrkey_suspend(struct device *dev)
 {
 	struct pm8941_pwrkey *pwrkey = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev))
+	if (device_may_wakeup(dev)) {
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+		if (!pwrkey->wake_enabled) {
+			pr_info("%s: enable_irq_wake skip by sec_ap_pmic\n", pwrkey->input->name);
+			return 0;
+		}
+#endif
 		enable_irq_wake(pwrkey->irq);
+	}
 
 	return 0;
 }
@@ -233,8 +315,15 @@ static int pm8941_pwrkey_resume(struct device *dev)
 {
 	struct pm8941_pwrkey *pwrkey = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev))
+	if (device_may_wakeup(dev)) {
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+		if (!pwrkey->wake_enabled) {
+			pr_info("%s: disable_irq_wake skip by sec_ap_pmic\n", pwrkey->input->name);
+			return 0;
+		}
+#endif
 		disable_irq_wake(pwrkey->irq);
+	}
 
 	return 0;
 }
@@ -408,6 +497,26 @@ static int pm8941_pwrkey_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, pwrkey);
 	device_init_wakeup(&pdev->dev, 1);
+
+	pm8941_pwrkey_irq(pwrkey->irq, pwrkey);
+
+#if IS_ENABLED(CONFIG_SEC_AP_PMIC)
+	if (!(pwrkey->data->has_pon_pbs))
+		pr_err("Invalid pwrkey data\n");
+
+	if (!strncmp(pwrkey->data->name, "pmic_pwrkey", 11)) {
+		pr_info("%s: pon_kpdpwr", __func__);
+		sec_pon.key_dev[SEC_PON_KPDPWR] = pwrkey;
+		sec_pon.reset_dev = pwrkey;
+		pm8941_pwrkey_irq(pwrkey->irq, pwrkey);
+	} else if (!strncmp(pwrkey->data->name, "pmic_resin", 10)) {
+		pr_info("%s: pon_resin", __func__);
+		sec_pon.key_dev[SEC_PON_RESIN] = pwrkey;
+		pm8941_pwrkey_irq(pwrkey->irq, pwrkey);
+	}
+
+	pwrkey->wake_enabled = true;
+#endif
 
 	return 0;
 }

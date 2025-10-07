@@ -560,6 +560,13 @@ static int pmic_pon_log_parse(struct pmic_pon_log_dev *pon_dev)
 #define FAULT_REASON2_FAULT_N_MASK			BIT(3)
 #define FAULT_REASON2_RESTART_PON_MASK			BIT(6)
 
+static bool smpl_panic;
+static bool pon_smpl_flag;
+module_param(smpl_panic, bool, 0444);
+
+static bool disable_pmic_fault_panic;
+module_param(disable_pmic_fault_panic, bool, 0444);
+
 /* Trigger a kernel panic if the last power off was caused by a PMIC fault. */
 static void pmic_pon_log_fault_panic(struct pmic_pon_log_dev *pon_dev)
 {
@@ -570,6 +577,7 @@ static void pmic_pon_log_fault_panic(struct pmic_pon_log_dev *pon_dev)
 	char buf[BUF_SIZE];
 	u8 mask;
 	int i;
+	u16 data;
 
 	mask = (u8)~(FAULT_REASON2_RESTART_PON_MASK |
 		     FAULT_REASON2_FAULT_N_MASK);
@@ -602,6 +610,12 @@ static void pmic_pon_log_fault_panic(struct pmic_pon_log_dev *pon_dev)
 	 */
 	for (i = prev_pon_success; i <= last_pon_success; i++) {
 		switch (pon_dev->log[i].event) {
+		/* TEMP: trigger panic on {0x0640, SMPL} for test purpose. Remove after test */
+		case PMIC_PON_EVENT_PON_TRIGGER_RECEIVED:
+			data = (pon_dev->log[i].data1 << 8) | pon_dev->log[i].data0;
+			if (data == 0x0640)
+				pon_smpl_flag = true;
+			break;
 		case PMIC_PON_EVENT_FAULT_REASON_1_2:
 			if (pon_dev->log[i].data0) {
 				pmic_pon_log_print_reason(buf, BUF_SIZE,
@@ -612,7 +626,10 @@ static void pmic_pon_log_fault_panic(struct pmic_pon_log_dev *pon_dev)
 				pmic_pon_log_print_reason(buf, BUF_SIZE,
 							pon_dev->log[i].data1,
 							pmic_pon_fault_reason2);
-				panic("PMIC SID0 FAULT; FAULT_REASON2=%s", buf);
+				if (disable_pmic_fault_panic && strstr(buf, "PMIC_RB"))
+					pr_err("PMIC fault detected, but fault_panic is disabled: %s\n", buf);
+				else
+					panic("PMIC SID0 FAULT; FAULT_REASON2=%s", buf);
 			}
 			break;
 		case PMIC_PON_EVENT_FAULT_REASON_3:
@@ -723,6 +740,10 @@ static int pmic_pon_log_probe(struct platform_device *pdev)
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,pmic-fault-panic"))
 		pmic_pon_log_fault_panic(pon_dev);
 
+	if (pon_smpl_flag && smpl_panic) {
+		panic("SMPL DETECTED - TRIGGER PANIC");
+	}
+	
 	return ret;
 }
 
